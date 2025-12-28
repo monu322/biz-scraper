@@ -1,7 +1,7 @@
 import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import relativeTime from "dayjs/plugin/relativeTime";
-import { SyntheticEvent, useCallback, useState } from "react";
+import { SyntheticEvent, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
@@ -76,90 +76,32 @@ import NiPrinter from "@/icons/nexture/ni-printer";
 import NiSearch from "@/icons/nexture/ni-search";
 import { cn } from "@/lib/utils";
 
-const initialRows = [
-  {
-    id: 1001,
-    name: "Laura Ellis",
-    avatar: "/images/avatars/avatar-1.jpg",
-    email: "laura.ellis@example.com",
-    company: "Tech Solutions Inc",
-    phone: "+1 (555) 123-4567",
-    lastContact: dayjs().subtract(2, "hours").toDate(),
-    status: "Active",
-  },
-  {
-    id: 1002,
-    name: "Daniel Fontaine",
-    avatar: "/images/avatars/avatar-2.jpg",
-    email: "daniel.fontaine@example.com",
-    company: "Digital Ventures",
-    phone: "+1 (555) 234-5678",
-    lastContact: dayjs().subtract(4, "hours").toDate(),
-    status: "Active",
-  },
-  {
-    id: 1003,
-    name: "Sofia Bennett",
-    avatar: "/images/avatars/avatar-3.jpg",
-    email: "sofia.bennett@example.com",
-    company: "Creative Studios",
-    phone: "+1 (555) 345-6789",
-    lastContact: dayjs().subtract(6, "hours").toDate(),
-    status: "Prospect",
-  },
-  {
-    id: 1004,
-    name: "Olivia Castillo",
-    avatar: "/images/avatars/avatar-4.jpg",
-    email: "olivia.castillo@example.com",
-    company: "Marketing Pro",
-    phone: "+1 (555) 456-7890",
-    lastContact: dayjs().subtract(8, "hours").toDate(),
-    status: "Active",
-  },
-  {
-    id: 1005,
-    name: "Lucas Wright",
-    avatar: "/images/avatars/avatar-5.jpg",
-    email: "lucas.wright@example.com",
-    company: "Finance Corp",
-    phone: "+1 (555) 567-8901",
-    lastContact: dayjs().subtract(12, "hours").toDate(),
-    status: "Inactive",
-  },
-  {
-    id: 1006,
-    name: "Henry Lawson",
-    avatar: "/images/avatars/avatar-6.jpg",
-    email: "henry.lawson@example.com",
-    company: "Health Systems",
-    phone: "+1 (555) 678-9012",
-    lastContact: dayjs().subtract(24, "hours").toDate(),
-    status: "Prospect",
-  },
-  {
-    id: 1007,
-    name: "Emma Sullivan",
-    avatar: "/images/avatars/avatar-7.jpg",
-    email: "emma.sullivan@example.com",
-    company: "Education Plus",
-    phone: "+1 (555) 789-0123",
-    lastContact: dayjs().subtract(36, "hours").toDate(),
-    status: "Active",
-  },
-  {
-    id: 1008,
-    name: "Adrian Patel",
-    avatar: "/images/avatars/avatar-8.jpg",
-    email: "adrian.patel@example.com",
-    company: "Consulting Group",
-    phone: "+1 (555) 890-1234",
-    lastContact: dayjs().subtract(48, "hours").toDate(),
-    status: "Lead",
-  },
-];
+interface Contact {
+  id: string;
+  name: string;
+  email: string | null;
+  company: string | null;
+  phone: string | null;
+  address: string | null;
+  website: string | null;
+  rating: number | null;
+  reviews_count: number | null;
+  category: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
 
-type Row = (typeof initialRows)[number];
+type Row = {
+  id: string | number;
+  name: string;
+  avatar?: string;
+  email: string | null;
+  company: string | null;
+  phone: string | null;
+  lastContact: Date | null;
+  status: string;
+};
 dayjs.extend(duration);
 dayjs.extend(relativeTime);
 
@@ -173,6 +115,43 @@ export default function Page() {
   const [scrapeKeyword, setScrapeKeyword] = useState("");
   const [scrapeLocation, setScrapeLocation] = useState("");
   const [scraping, setScraping] = useState(false);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch contacts from backend
+  const fetchContacts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("http://localhost:8000/api/contacts");
+      if (!response.ok) {
+        throw new Error("Failed to fetch contacts");
+      }
+      const data: Contact[] = await response.json();
+      
+      // Transform API data to table rows
+      const transformedRows: Row[] = data.map((contact) => ({
+        id: contact.id,
+        name: contact.name,
+        email: contact.email,
+        company: contact.company,
+        phone: contact.phone,
+        lastContact: contact.created_at ? new Date(contact.created_at) : null,
+        status: contact.status,
+      }));
+      
+      setRows(transformedRows);
+    } catch (error) {
+      console.error("Error fetching contacts:", error);
+      alert("Failed to load contacts. Please check your backend connection.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Load contacts on mount
+  useEffect(() => {
+    fetchContacts();
+  }, [fetchContacts]);
 
   const handleScrapeOpen = () => {
     setScrapeDialogOpen(true);
@@ -206,7 +185,8 @@ export default function Page() {
       console.log("Scrape successful:", data);
       alert(`Successfully scraped ${data.total_contacts} contacts!`);
       
-      // TODO: Refresh the table data here
+      // Refresh the table data
+      await fetchContacts();
       handleScrapeClose();
     } catch (error) {
       console.error("Scraping error:", error);
@@ -222,8 +202,6 @@ export default function Page() {
       bottom: 5,
     };
   }, []);
-
-  const [rows] = useState<Row[]>(initialRows);
 
   const columns: GridColDef<(typeof rows)[number]>[] = [
     {
