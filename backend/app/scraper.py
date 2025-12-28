@@ -13,16 +13,19 @@ class ScraperService:
     
     async def scrape_google_maps(self, keyword: str, location: str) -> tuple[List[ContactCreate], str]:
         """
-        Scrape Google Maps using Apify's Google Maps Email Extractor.
+        Scrape Google Maps using Apify's Google Maps Scraper.
+        Extracts business information including emails when available.
         Returns a tuple of (contacts list, run_id).
         """
         try:
-            # Prepare the Actor input
+            # Prepare the Actor input with email extraction enabled
             run_input = {
                 "searchStringsArray": [keyword],
                 "locationQuery": location,
                 "maxCrawledPlacesPerSearch": 20,  # Limit results
                 "language": "en",
+                "scrapeEmailFromWebsites": True,  # Visit websites to find emails
+                "scrapePeopleAlsoSearch": False,   # Skip related searches
                 "exportPlaceUrls": False,
                 "includeWebResults": False,
             }
@@ -63,9 +66,16 @@ class ScraperService:
         # Check common email fields
         email = item.get("email") or item.get("emailAddress") or item.get("contactEmail")
         
-        # If no direct email, try to find in website or other fields
-        if not email and item.get("website"):
-            # You could add logic here to extract email from website
-            pass
+        # Check if emails is an array and get the first one
+        if not email and item.get("emails"):
+            emails = item.get("emails")
+            if isinstance(emails, list) and len(emails) > 0:
+                email = emails[0]
+        
+        # Check nested people data
+        if not email and item.get("people"):
+            people = item.get("people")
+            if isinstance(people, list) and len(people) > 0:
+                email = people[0].get("email")
         
         return email
