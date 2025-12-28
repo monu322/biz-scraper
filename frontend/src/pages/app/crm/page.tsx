@@ -11,6 +11,10 @@ import {
   Breadcrumbs,
   Button,
   capitalize,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FilledInput,
   FormControl,
   IconButton,
@@ -23,6 +27,7 @@ import {
   PopoverVirtualElement,
   Select,
   SelectProps,
+  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -163,6 +168,26 @@ export default function Page() {
     type: "include",
     ids: new Set(),
   });
+
+  const [scrapeDialogOpen, setScrapeDialogOpen] = useState(false);
+  const [scrapeKeyword, setScrapeKeyword] = useState("");
+  const [scrapeLocation, setScrapeLocation] = useState("");
+
+  const handleScrapeOpen = () => {
+    setScrapeDialogOpen(true);
+  };
+
+  const handleScrapeClose = () => {
+    setScrapeDialogOpen(false);
+    setScrapeKeyword("");
+    setScrapeLocation("");
+  };
+
+  const handleScrapeSubmit = () => {
+    console.log("Scraping with keyword:", scrapeKeyword, "and location:", scrapeLocation);
+    // Add your scraping API call here
+    handleScrapeClose();
+  };
 
   const getRowSpacing = useCallback((params: GridRowSpacingParams) => {
     return {
@@ -412,6 +437,18 @@ export default function Page() {
                 </>
               )}
 
+              <Tooltip title="Scrape">
+                <Button
+                  className="icon-only surface-standard"
+                  size="medium"
+                  color="primary"
+                  variant="surface"
+                  onClick={handleScrapeOpen}
+                >
+                  <NiSearch size={"medium"} />
+                </Button>
+              </Tooltip>
+
               <Tooltip title="Columns">
                 <ColumnsPanelTrigger
                   render={(props) => (
@@ -528,9 +565,42 @@ export default function Page() {
   }
 
   return (
-    <Grid container spacing={5}>
-      <Grid size={12}>
-        <DataGrid
+    <>
+      <Dialog open={scrapeDialogOpen} onClose={handleScrapeClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Scrape Data</DialogTitle>
+        <DialogContent>
+          <Box className="flex flex-col gap-4 pt-2">
+            <TextField
+              label="Keyword"
+              variant="outlined"
+              fullWidth
+              value={scrapeKeyword}
+              onChange={(e) => setScrapeKeyword(e.target.value)}
+              placeholder="Enter keyword to search"
+            />
+            <TextField
+              label="Location"
+              variant="outlined"
+              fullWidth
+              value={scrapeLocation}
+              onChange={(e) => setScrapeLocation(e.target.value)}
+              placeholder="Enter location"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleScrapeClose} color="grey" variant="text">
+            Cancel
+          </Button>
+          <Button onClick={handleScrapeSubmit} color="primary" variant="contained" disabled={!scrapeKeyword || !scrapeLocation}>
+            Scrape
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Grid container spacing={5}>
+        <Grid size={12}>
+          <DataGrid
           rows={rows}
           columns={columns}
           initialState={{
@@ -611,8 +681,9 @@ export default function Page() {
           }}
           hideFooterSelectedRowCount
           showToolbar
-        />
+          />
+        </Grid>
       </Grid>
-    </Grid>
+    </>
   );
 }
