@@ -21,11 +21,11 @@ export default function ContentWrapper({ children }: PropsWithChildren) {
   return (
     <Paper
       elevation={0}
-      className="flex min-h-[calc(100vh-7.5rem)] w-full min-w-0 rounded-xl bg-transparent px-4 py-5 sm:rounded-4xl sm:py-6 md:py-8 lg:px-6"
+      className="debug-paper flex min-h-[calc(100vh-7.5rem)] w-full rounded-xl bg-transparent px-4 py-5 sm:rounded-4xl sm:py-6 md:py-8 lg:px-6"
     >
-      <Box className="flex w-full">
-        <Box className={cn("w-full ml-2 transition-all", content === ContentType.Boxed && "max-w-screen-lg")}>
-          <Box className="-mx-2 min-h-full overflow-x-auto px-2 *:mb-2">{children}</Box>
+      <Box className="debug-outer-box flex w-full">
+        <Box className={cn("debug-middle-box flex-1 transition-all", content === ContentType.Boxed && "")}>
+          <Box className="debug-inner-box min-h-full w-full *:mb-2">{children}</Box>
         </Box>
       </Box>
     </Paper>
