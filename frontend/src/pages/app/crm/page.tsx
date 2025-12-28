@@ -172,6 +172,7 @@ export default function Page() {
   const [scrapeDialogOpen, setScrapeDialogOpen] = useState(false);
   const [scrapeKeyword, setScrapeKeyword] = useState("");
   const [scrapeLocation, setScrapeLocation] = useState("");
+  const [scraping, setScraping] = useState(false);
 
   const handleScrapeOpen = () => {
     setScrapeDialogOpen(true);
@@ -183,10 +184,36 @@ export default function Page() {
     setScrapeLocation("");
   };
 
-  const handleScrapeSubmit = () => {
-    console.log("Scraping with keyword:", scrapeKeyword, "and location:", scrapeLocation);
-    // Add your scraping API call here
-    handleScrapeClose();
+  const handleScrapeSubmit = async () => {
+    setScraping(true);
+    try {
+      const response = await fetch("http://localhost:8000/api/scrape", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          keyword: scrapeKeyword,
+          location: scrapeLocation,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to scrape data");
+      }
+
+      const data = await response.json();
+      console.log("Scrape successful:", data);
+      alert(`Successfully scraped ${data.total_contacts} contacts!`);
+      
+      // TODO: Refresh the table data here
+      handleScrapeClose();
+    } catch (error) {
+      console.error("Scraping error:", error);
+      alert("Failed to scrape data. Please check your backend connection.");
+    } finally {
+      setScraping(false);
+    }
   };
 
   const getRowSpacing = useCallback((params: GridRowSpacingParams) => {
