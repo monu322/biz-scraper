@@ -264,6 +264,29 @@ export default function NicheDetailPage() {
     }
   };
 
+  const handleResetNAEmails = async () => {
+    if (!confirm("This will reset all emails marked as 'N/A' back to null, allowing them to be enriched again. Continue?")) return;
+    
+    setResetting(true);
+    try {
+      const response = await fetch("http://localhost:8000/api/reset-na-emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!response.ok) throw new Error("Failed to reset emails");
+
+      const data = await response.json();
+      await fetchContacts();
+      alert(`Reset ${data.reset_count} email(s) from N/A to null`);
+    } catch (error) {
+      console.error("Reset error:", error);
+      alert("Failed to reset emails.");
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const handleDeleteAllContacts = async () => {
     if (!confirm("⚠️ WARNING: This will delete ALL contacts in this niche. Continue?")) return;
     
@@ -408,6 +431,12 @@ export default function NicheDetailPage() {
               <Tooltip title="Enrich Emails">
                 <Button className="icon-only surface-standard" size="medium" color="success" variant="surface" onClick={handleEnrichEmails} disabled={enriching || scraping}>
                   <NiEmail size={"medium"} />
+                </Button>
+              </Tooltip>
+
+              <Tooltip title="Reset N/A Emails">
+                <Button className="icon-only surface-standard" size="medium" color="warning" variant="surface" onClick={handleResetNAEmails} disabled={enriching || scraping || resetting || deleting}>
+                  <NiArrowHistory size={"medium"} />
                 </Button>
               </Tooltip>
 
