@@ -90,11 +90,12 @@ class EnrichmentService:
             print(f"Error fetching website {website}: {e}")
             return None
     
-    def extract_emails_from_html(self, soup: BeautifulSoup) -> list[str]:
+    def extract_emails_from_html(self, soup: BeautifulSoup, page_url: str = "") -> list[str]:
         """
         Extract emails directly from HTML:
         1. From mailto: links
-        2. Using regex on the HTML text
+        2. Using regex on the raw HTML
+        3. Using regex on the text content
         """
         emails = []
         
@@ -102,25 +103,39 @@ class EnrichmentService:
             # 1. Extract from mailto: links
             for link in soup.find_all('a', href=True):
                 href = link.get('href', '')
-                if href.startswith('mailto:'):
+                if href.lower().startswith('mailto:'):
                     # Extract email from mailto:email@example.com
-                    email = href.replace('mailto:', '').split('?')[0].strip()
+                    email = href[7:].split('?')[0].strip()  # Skip 'mailto:'
                     if email and '@' in email:
                         emails.append(email.lower())
                         print(f"  → Found mailto email: {email}")
             
-            # 2. Also check text content with regex
-            html_text = soup.get_text()
+            # 2. Check raw HTML string with regex (catches emails in any attribute or text)
+            raw_html = str(soup)
             email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-            found_emails = re.findall(email_pattern, html_text)
-            for email in found_emails:
-                if email.lower() not in emails:
-                    emails.append(email.lower())
+            found_in_html = re.findall(email_pattern, raw_html, re.IGNORECASE)
+            for email in found_in_html:
+                email_lower = email.lower()
+                if email_lower not in emails:
+                    emails.append(email_lower)
+                    print(f"  → Found email in HTML: {email}")
+            
+            # 3. Also check text content with regex
+            html_text = soup.get_text(separator=' ', strip=True)
+            found_in_text = re.findall(email_pattern, html_text, re.IGNORECASE)
+            for email in found_in_text:
+                email_lower = email.lower()
+                if email_lower not in emails:
+                    emails.append(email_lower)
+                    print(f"  → Found email in text: {email}")
             
             # Filter out common false positives
             filtered_emails = [e for e in emails if not any(
-                x in e.lower() for x in ['example.com', 'email.com', 'domain.com', 'yoursite.com']
+                x in e.lower() for x in ['example.com', 'email.com', 'domain.com', 'yoursite.com', 'wixpress.com', 'sentry.io']
             )]
+            
+            if filtered_emails and page_url:
+                print(f"  → Total emails found on {page_url}: {filtered_emails}")
             
             return filtered_emails
             
@@ -152,7 +167,7 @@ class EnrichmentService:
                     soup = BeautifulSoup(response.text, 'html.parser')
                     
                     # Extract emails directly from mailto links and HTML
-                    homepage_emails = self.extract_emails_from_html(soup)
+                    homepage_emails = self.extract_emails_from_html(soup, website)
                     direct_emails.extend(homepage_emails)
                     
                     # If we already found emails, we might not need to check more pages
@@ -177,7 +192,7 @@ class EnrichmentService:
                             contact_soup = BeautifulSoup(contact_response.text, 'html.parser')
                             
                             # Extract emails from this page too
-                            page_emails = self.extract_emails_from_html(contact_soup)
+                            page_emails = self.extract_emails_from_html(contact_soup, url)
                             for email in page_emails:
                                 if email not in direct_emails:
                                     direct_emails.append(email)
