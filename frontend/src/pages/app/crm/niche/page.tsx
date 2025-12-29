@@ -552,19 +552,92 @@ export default function NicheDetailPage() {
           <Grid size={12}>
             <Box className="mb-4 rounded-lg bg-surface-container p-4">
               <Box className="mb-2 flex items-center justify-between">
-                <Typography variant="body2" className="text-text-secondary">Email Enrichment Progress</Typography>
+                <Typography variant="body2" className="text-text-secondary">Email Enrichment Status</Typography>
                 <Typography variant="body2" className="font-medium">
-                  {(() => {
-                    const withEmail = rows.filter(r => r.email && r.email !== "N/A").length;
-                    const percentage = Math.round((withEmail / rows.length) * 100);
-                    return `${withEmail} / ${rows.length} contacts (${percentage}%)`;
-                  })()}
+                  {rows.length} contacts total
                 </Typography>
               </Box>
-              <LinearProgress variant="determinate" value={(() => {
-                const withEmail = rows.filter(r => r.email && r.email !== "N/A").length;
-                return Math.round((withEmail / rows.length) * 100);
-              })()} color="success" className="h-2 rounded-full" />
+              
+              {/* Multi-color progress bar */}
+              {(() => {
+                const statusMessages = ["no email found", "No website", "website error", "N/A"];
+                const withEmail = rows.filter(r => r.email && !statusMessages.includes(r.email)).length;
+                const noEmailFound = rows.filter(r => r.email === "no email found" || r.email === "N/A").length;
+                const noWebsite = rows.filter(r => r.email === "No website").length;
+                const websiteError = rows.filter(r => r.email === "website error").length;
+                const notChecked = rows.filter(r => !r.email).length;
+                
+                const total = rows.length;
+                const greenWidth = (withEmail / total) * 100;
+                const redWidth = (noEmailFound / total) * 100;
+                const blueWidth = (noWebsite / total) * 100;
+                const orangeWidth = (websiteError / total) * 100;
+                const greyWidth = (notChecked / total) * 100;
+                
+                return (
+                  <>
+                    <Box className="flex h-3 w-full overflow-hidden rounded-full bg-gray-200">
+                      {greenWidth > 0 && (
+                        <Box 
+                          className="bg-green-500 transition-all" 
+                          style={{ width: `${greenWidth}%` }}
+                          title={`${withEmail} with email`}
+                        />
+                      )}
+                      {redWidth > 0 && (
+                        <Box 
+                          className="bg-red-500 transition-all" 
+                          style={{ width: `${redWidth}%` }}
+                          title={`${noEmailFound} no email found`}
+                        />
+                      )}
+                      {blueWidth > 0 && (
+                        <Box 
+                          className="bg-blue-500 transition-all" 
+                          style={{ width: `${blueWidth}%` }}
+                          title={`${noWebsite} no website`}
+                        />
+                      )}
+                      {orangeWidth > 0 && (
+                        <Box 
+                          className="bg-orange-500 transition-all" 
+                          style={{ width: `${orangeWidth}%` }}
+                          title={`${websiteError} website error`}
+                        />
+                      )}
+                      {greyWidth > 0 && (
+                        <Box 
+                          className="bg-gray-400 transition-all" 
+                          style={{ width: `${greyWidth}%` }}
+                          title={`${notChecked} not checked`}
+                        />
+                      )}
+                    </Box>
+                    <Box className="mt-2 flex flex-wrap items-center gap-4">
+                      <Box className="flex items-center gap-1.5">
+                        <Box className="h-3 w-3 rounded-full bg-green-500" />
+                        <Typography variant="caption" className="text-text-secondary">{withEmail} emails</Typography>
+                      </Box>
+                      <Box className="flex items-center gap-1.5">
+                        <Box className="h-3 w-3 rounded-full bg-red-500" />
+                        <Typography variant="caption" className="text-text-secondary">{noEmailFound} no email</Typography>
+                      </Box>
+                      <Box className="flex items-center gap-1.5">
+                        <Box className="h-3 w-3 rounded-full bg-blue-500" />
+                        <Typography variant="caption" className="text-text-secondary">{noWebsite} no website</Typography>
+                      </Box>
+                      <Box className="flex items-center gap-1.5">
+                        <Box className="h-3 w-3 rounded-full bg-orange-500" />
+                        <Typography variant="caption" className="text-text-secondary">{websiteError} site error</Typography>
+                      </Box>
+                      <Box className="flex items-center gap-1.5">
+                        <Box className="h-3 w-3 rounded-full bg-gray-400" />
+                        <Typography variant="caption" className="text-text-secondary">{notChecked} pending</Typography>
+                      </Box>
+                    </Box>
+                  </>
+                );
+              })()}
             </Box>
           </Grid>
         )}
