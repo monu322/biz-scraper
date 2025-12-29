@@ -297,7 +297,7 @@ export default function Page() {
       renderCell: (params: GridRenderCellParams<any, number>) => {
         if (params.value) {
           return (
-            <Box className="flex items-center gap-1.5">
+            <Box className="flex h-full items-center gap-1.5">
               <span className="text-base leading-none">⭐</span>
               <Typography variant="body2" className="leading-none">
                 {params.value.toFixed(1)}
