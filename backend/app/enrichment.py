@@ -105,12 +105,31 @@ class EnrichmentService:
         except:
             return ""
     
+    def decode_cloudflare_email(self, encoded: str) -> str:
+        """
+        Decode Cloudflare email protection.
+        The data-cfemail attribute contains hex-encoded email where first 2 chars are XOR key.
+        """
+        try:
+            # First 2 hex chars are the XOR key
+            key = int(encoded[:2], 16)
+            # Rest are the encoded email characters
+            decoded = ""
+            for i in range(2, len(encoded), 2):
+                char_code = int(encoded[i:i+2], 16) ^ key
+                decoded += chr(char_code)
+            return decoded.lower()
+        except Exception as e:
+            print(f"  → Error decoding Cloudflare email: {e}")
+            return ""
+    
     def extract_emails_from_html(self, soup: BeautifulSoup, page_url: str = "", domain: str = "") -> list[str]:
         """
         Extract emails directly from HTML:
-        1. From mailto: links
-        2. Search for @domain pattern in raw HTML
-        3. General email regex on raw HTML
+        1. Decode Cloudflare protected emails
+        2. From mailto: links
+        3. Search for @domain pattern in raw HTML
+        4. General email regex on raw HTML
         """
         emails = []
         
@@ -118,7 +137,27 @@ class EnrichmentService:
             # Get raw HTML as string
             raw_html = str(soup)
             
-            # 1. Extract from mailto: links
+            # 1. CLOUDFLARE EMAIL PROTECTION - Decode data-cfemail attributes
+            for cf_element in soup.find_all(attrs={"data-cfemail": True}):
+                encoded = cf_element.get("data-cfemail", "")
+                if encoded:
+                    decoded_email = self.decode_cloudflare_email(encoded)
+                    if decoded_email and '@' in decoded_email:
+                        if decoded_email not in emails:
+                            emails.append(decoded_email)
+                            print(f"  → Found Cloudflare protected email: {decoded_email}")
+            
+            # Also check for data-cfemail in raw HTML with regex (backup method)
+            cf_pattern = r'data-cfemail="([a-f0-9]+)"'
+            cf_matches = re.findall(cf_pattern, raw_html, re.IGNORECASE)
+            for encoded in cf_matches:
+                decoded_email = self.decode_cloudflare_email(encoded)
+                if decoded_email and '@' in decoded_email:
+                    if decoded_email not in emails:
+                        emails.append(decoded_email)
+                        print(f"  → Found Cloudflare protected email (regex): {decoded_email}")
+            
+            # 2. Extract from mailto: links
             for link in soup.find_all('a', href=True):
                 href = link.get('href', '')
                 if 'mailto:' in href.lower():
@@ -126,10 +165,11 @@ class EnrichmentService:
                     start = href.lower().find('mailto:') + 7
                     email = href[start:].split('?')[0].strip()
                     if email and '@' in email:
-                        emails.append(email.lower())
-                        print(f"  → Found mailto email: {email}")
+                        if email.lower() not in emails:
+                            emails.append(email.lower())
+                            print(f"  → Found mailto email: {email}")
             
-            # 2. Search for @domain pattern specifically (most reliable)
+            # 3. Search for @domain pattern specifically (most reliable)
             if domain:
                 domain_pattern = rf'[a-zA-Z0-9._%+-]+@{re.escape(domain)}'
                 found_domain_emails = re.findall(domain_pattern, raw_html, re.IGNORECASE)
@@ -139,7 +179,7 @@ class EnrichmentService:
                         emails.append(email_lower)
                         print(f"  → Found @{domain} email: {email}")
             
-            # 3. General email pattern search
+            # 4. General email pattern search
             email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
             found_in_html = re.findall(email_pattern, raw_html, re.IGNORECASE)
             for email in found_in_html:
