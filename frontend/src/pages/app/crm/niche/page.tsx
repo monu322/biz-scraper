@@ -137,6 +137,7 @@ export default function NicheDetailPage() {
   const [enriching, setEnriching] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -311,6 +312,29 @@ export default function NicheDetailPage() {
     }
   };
 
+  const handleClearAllEmails = async () => {
+    if (!confirm("This will clear ALL emails in this niche, setting them to null for re-enrichment. Continue?")) return;
+    
+    setClearing(true);
+    try {
+      const response = await fetch(`http://localhost:8000/api/niches/${nicheId}/clear-emails`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!response.ok) throw new Error("Failed to clear emails");
+
+      const data = await response.json();
+      await fetchContacts();
+      alert(`Cleared ${data.cleared_count} email(s)`);
+    } catch (error) {
+      console.error("Clear error:", error);
+      alert("Failed to clear emails.");
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const getRowSpacing = useCallback((params: GridRowSpacingParams) => {
     return { top: params.isFirstVisible ? 0 : 5, bottom: 5 };
   }, []);
@@ -435,8 +459,14 @@ export default function NicheDetailPage() {
               </Tooltip>
 
               <Tooltip title="Reset N/A Emails">
-                <Button className="icon-only surface-standard" size="medium" color="warning" variant="surface" onClick={handleResetNAEmails} disabled={enriching || scraping || resetting || deleting}>
+                <Button className="icon-only surface-standard" size="medium" color="warning" variant="surface" onClick={handleResetNAEmails} disabled={enriching || scraping || resetting || deleting || clearing}>
                   <NiArrowHistory size={"medium"} />
+                </Button>
+              </Tooltip>
+
+              <Tooltip title="Clear All Emails">
+                <Button className="icon-only surface-standard" size="medium" color="secondary" variant="surface" onClick={handleClearAllEmails} disabled={enriching || scraping || resetting || deleting || clearing}>
+                  <NiCrossSquare size={"medium"} />
                 </Button>
               </Tooltip>
 

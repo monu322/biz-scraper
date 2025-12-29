@@ -254,12 +254,26 @@ class EnrichmentService:
             print(f"Error extracting emails from HTML: {e}")
             return []
     
+    def email_matches_domain(self, email: str, domain: str) -> bool:
+        """Check if email domain matches the website domain."""
+        try:
+            if not email or not domain:
+                return False
+            email_domain = email.split('@')[-1].lower()
+            website_domain = domain.lower()
+            # Check if email domain matches or is a subdomain
+            return email_domain == website_domain or email_domain.endswith('.' + website_domain)
+        except:
+            return False
+    
     async def fetch_multiple_pages(self, website: str) -> list[str]:
         """
         Fetch homepage and potential contact/about pages.
         Returns list of directly found emails.
+        Prioritizes emails matching the website domain.
         """
-        direct_emails = []
+        all_emails = []
+        domain_matched_emails = []
         
         try:
             # Ensure URL has protocol
@@ -282,17 +296,22 @@ class EnrichmentService:
                     
                     # Extract emails directly from HTML
                     homepage_emails = self.extract_emails_from_html(soup, website, domain)
-                    direct_emails.extend(homepage_emails)
                     
-                    # If email found on homepage, no need to check contact pages
-                    if direct_emails:
-                        print(f"  → Email found on homepage, skipping contact pages")
-                        return direct_emails
+                    for email in homepage_emails:
+                        if email not in all_emails:
+                            all_emails.append(email)
+                        if self.email_matches_domain(email, domain) and email not in domain_matched_emails:
+                            domain_matched_emails.append(email)
                     
-                    # Find potential contact pages (only if no email found on homepage)
+                    # If we found a domain-matched email on homepage, return it
+                    if domain_matched_emails:
+                        print(f"  → Domain-matched email found on homepage: {domain_matched_emails[0]}")
+                        return domain_matched_emails
+                    
+                    # Find potential contact pages
                     contact_urls = self.find_contact_page_urls(soup, base_url)
                     
-                    # 2. Fetch contact/about pages only if no email found yet
+                    # 2. Fetch contact/about pages - always check if no domain match yet
                     for url in contact_urls[:3]:  # Limit to 3 additional pages
                         print(f"  → Fetching contact page: {url}")
                         try:
@@ -300,12 +319,19 @@ class EnrichmentService:
                             contact_response.raise_for_status()
                             contact_soup = BeautifulSoup(contact_response.text, 'html.parser')
                             
-                            # Extract emails from this page too
+                            # Extract emails from this page
                             page_emails = self.extract_emails_from_html(contact_soup, url, domain)
                             for email in page_emails:
-                                if email not in direct_emails:
-                                    direct_emails.append(email)
+                                if email not in all_emails:
+                                    all_emails.append(email)
+                                if self.email_matches_domain(email, domain) and email not in domain_matched_emails:
+                                    domain_matched_emails.append(email)
                             
+                            # If we found a domain match, we can stop
+                            if domain_matched_emails:
+                                print(f"  → Domain-matched email found on {url}: {domain_matched_emails[0]}")
+                                return domain_matched_emails
+                                
                         except Exception as e:
                             print(f"  → Could not fetch {url}: {e}")
                             continue
@@ -314,7 +340,10 @@ class EnrichmentService:
                     print(f"  → Error fetching homepage: {e}")
                     return ["WEBSITE_ERROR"]  # Special marker for website errors
             
-            return direct_emails
+            # If no domain-matched email, return all emails (first one will be used)
+            if all_emails:
+                print(f"  → No domain-matched email, using: {all_emails[0]}")
+            return all_emails
             
         except Exception as e:
             print(f"Error in fetch_multiple_pages: {e}")
@@ -341,7 +370,7 @@ class EnrichmentService:
                 return direct_emails[0]
             
             print(f"  → No email found on website")
-            return "N/A"
+            return "no email found"
             
         except Exception as e:
             print(f"Error extracting email for {business_name}: {e}")
@@ -418,17 +447,17 @@ class EnrichmentService:
             failed_count = 0
             
             for contact in contacts:
-                # Skip if already has email or marked N/A
-                if contact.get("email") == "N/A":
+                # Skip if already has a real email (not status messages)
+                email = contact.get("email")
+                if email and email not in ["N/A", "no email found", "No website", "website error"]:
                     skipped_count += 1
                     continue
                 
-                if contact.get("email"):
-                    skipped_count += 1
-                    continue
-                
+                # If no website, mark as "No website"
                 if not contact.get("website"):
-                    skipped_count += 1
+                    await db.update_contact_email(contact["id"], "No website")
+                    enriched_count += 1
+                    print(f"  → {contact['name']}: No website")
                     continue
                 
                 # Try to find email

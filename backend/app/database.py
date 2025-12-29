@@ -311,6 +311,28 @@ class Database:
         except Exception as e:
             print(f"Error deleting contacts by niche: {e}")
             raise
+    
+    async def clear_emails_by_niche(self, niche_id: int) -> int:
+        """Clear all emails for contacts in a specific niche."""
+        try:
+            # First get count
+            count_response = self.client.table("contacts") \
+                .select("id") \
+                .eq("niche_id", niche_id) \
+                .execute()
+            count = len(count_response.data) if count_response.data else 0
+            
+            # Clear all emails to null
+            if count > 0:
+                self.client.table("contacts") \
+                    .update({"email": None}) \
+                    .eq("niche_id", niche_id) \
+                    .execute()
+            
+            return count
+        except Exception as e:
+            print(f"Error clearing emails by niche: {e}")
+            raise
 
 
 # Singleton instance

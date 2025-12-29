@@ -332,6 +332,30 @@ async def delete_niche_contacts(niche_id: int):
         )
 
 
+@app.post("/api/niches/{niche_id}/clear-emails")
+async def clear_niche_emails(niche_id: int):
+    """Clear all emails for contacts in a specific niche (set to null)."""
+    try:
+        # Verify niche exists
+        niche = await db.get_niche_by_id(niche_id)
+        if not niche:
+            raise HTTPException(status_code=404, detail="Niche not found")
+        
+        count = await db.clear_emails_by_niche(niche_id)
+        return {
+            "message": f"Cleared {count} email(s)",
+            "cleared_count": count
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in clear_niche_emails: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An error occurred while clearing emails: {str(e)}"
+        )
+
+
 @app.post("/api/niches/{niche_id}/scrape", response_model=ScrapeResponse)
 async def scrape_niche_contacts(niche_id: int, request: ScrapeRequest):
     """Scrape contacts for a specific niche."""
