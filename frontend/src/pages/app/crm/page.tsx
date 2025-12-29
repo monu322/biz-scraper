@@ -124,6 +124,7 @@ export default function Page() {
   const [scraping, setScraping] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -273,6 +274,44 @@ export default function Page() {
       alert("Failed to reset emails. Please check your backend connection.");
     } finally {
       setResetting(false);
+    }
+  };
+
+  const handleDeleteAllContacts = async () => {
+    if (!confirm("⚠️ WARNING: This will permanently delete ALL contacts from the database. This action cannot be undone!\n\nAre you sure you want to continue?")) {
+      return;
+    }
+    
+    // Double confirmation for safety
+    if (!confirm("Are you absolutely sure? Type 'yes' in the next prompt to confirm.")) {
+      return;
+    }
+    
+    setDeleting(true);
+    try {
+      const response = await fetch("http://localhost:8000/api/contacts", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete contacts");
+      }
+
+      const data = await response.json();
+      console.log("Delete successful:", data);
+      
+      // Refresh the table data
+      await fetchContacts();
+      
+      alert(`Deleted ${data.deleted_count} contact(s)`);
+    } catch (error) {
+      console.error("Delete error:", error);
+      alert("Failed to delete contacts. Please check your backend connection.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -587,9 +626,22 @@ export default function Page() {
                   color="warning"
                   variant="surface"
                   onClick={handleResetNAEmails}
-                  disabled={enriching || scraping || resetting}
+                  disabled={enriching || scraping || resetting || deleting}
                 >
                   <NiArrowHistory size={"medium"} />
+                </Button>
+              </Tooltip>
+
+              <Tooltip title="Delete All Contacts">
+                <Button
+                  className="icon-only surface-standard"
+                  size="medium"
+                  color="error"
+                  variant="surface"
+                  onClick={handleDeleteAllContacts}
+                  disabled={enriching || scraping || resetting || deleting}
+                >
+                  <NiBinEmpty size={"medium"} />
                 </Button>
               </Tooltip>
 

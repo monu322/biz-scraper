@@ -255,23 +255,28 @@ class EnrichmentService:
                     
                 except Exception as e:
                     print(f"  → Error fetching homepage: {e}")
-                    return []
+                    return ["WEBSITE_ERROR"]  # Special marker for website errors
             
             return direct_emails
             
         except Exception as e:
             print(f"Error in fetch_multiple_pages: {e}")
-            return []
+            return ["WEBSITE_ERROR"]  # Special marker for website errors
     
     async def extract_email_from_website(self, website: str, business_name: str) -> Optional[str]:
         """
         Fetch website content (homepage + contact pages) and extract email.
         Uses direct extraction from HTML using mailto links and @domain regex.
-        Returns the email if found, "N/A" if not found, or None if error.
+        Returns the email if found, "N/A" if not found, "website error" if website is broken.
         """
         try:
             # Fetch multiple pages and extract emails directly
             direct_emails = await self.fetch_multiple_pages(website)
+            
+            # Check for website error marker
+            if direct_emails and direct_emails[0] == "WEBSITE_ERROR":
+                print(f"  → Website error - could not load website")
+                return "website error"
             
             # If we found emails directly from mailto links or regex, use the first one
             if direct_emails:
@@ -283,7 +288,7 @@ class EnrichmentService:
             
         except Exception as e:
             print(f"Error extracting email for {business_name}: {e}")
-            return None
+            return "website error"
     
     async def enrich_all_contacts(self) -> dict:
         """

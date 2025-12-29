@@ -176,6 +176,22 @@ class Database:
         except Exception as e:
             print(f"Error resetting N/A emails: {e}")
             raise
+    
+    async def delete_all_contacts(self) -> int:
+        """Delete all contacts from the database."""
+        try:
+            # First get count
+            count_response = self.client.table("contacts").select("id").execute()
+            count = len(count_response.data) if count_response.data else 0
+            
+            # Delete all contacts
+            if count > 0:
+                self.client.table("contacts").delete().neq("id", -1).execute()
+            
+            return count
+        except Exception as e:
+            print(f"Error deleting all contacts: {e}")
+            raise
 
 
 # Singleton instance

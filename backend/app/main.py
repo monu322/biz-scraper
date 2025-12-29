@@ -190,6 +190,28 @@ async def reset_na_emails():
         )
 
 
+@app.delete("/api/contacts")
+async def delete_all_contacts():
+    """
+    Delete all contacts from the database.
+    This is a destructive operation and cannot be undone.
+    """
+    try:
+        count = await db.delete_all_contacts()
+        
+        return {
+            "message": f"Deleted {count} contact(s)",
+            "deleted_count": count
+        }
+    
+    except Exception as e:
+        print(f"Error in delete_all_contacts: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An error occurred while deleting contacts: {str(e)}"
+        )
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
