@@ -1,7 +1,7 @@
 import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import relativeTime from "dayjs/plugin/relativeTime";
-import { SyntheticEvent, useCallback, useEffect, useState, useMemo } from "react";
+import { MouseEvent, useCallback, useEffect, useState, useMemo } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
@@ -40,6 +40,8 @@ import {
   Select,
   SelectProps,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -87,6 +89,8 @@ import NiEmail from "@/icons/nexture/ni-email";
 import NiPenSquare from "@/icons/nexture/ni-pen-square";
 import NiPrinter from "@/icons/nexture/ni-printer";
 import NiSearch from "@/icons/nexture/ni-search";
+import NiList from "@/icons/nexture/ni-list";
+import NiSigns from "@/icons/nexture/ni-signs";
 import { cn } from "@/lib/utils";
 
 interface Niche {
@@ -158,6 +162,13 @@ export default function NicheDetailPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
+
+  // Handle view mode change
+  const handleViewModeChange = (_event: MouseEvent<HTMLElement>, newMode: ViewMode | null) => {
+    if (newMode !== null) {
+      setViewMode(newMode);
+    }
+  };
 
   // Get rows with coordinates for map
   const mapRows = useMemo(() => 
@@ -480,6 +491,18 @@ export default function NicheDetailPage() {
             </Grid>
 
             <Grid size={{ xs: 12, md: "auto" }} className="flex flex-row items-start gap-2">
+              {/* View Toggle */}
+              <Box className="border-grey-200 inline-flex rounded-2xl border border-solid p-1.75 mr-2">
+                <ToggleButtonGroup value={viewMode} exclusive onChange={handleViewModeChange} size="small">
+                  <ToggleButton value="table">
+                    <NiList size="small" />
+                  </ToggleButton>
+                  <ToggleButton value="map">
+                    <NiSigns size="small" />
+                  </ToggleButton>
+                </ToggleButtonGroup>
+              </Box>
+
               <Tooltip title="Scrape">
                 <Button className="icon-only surface-standard" size="medium" color="primary" variant="surface" onClick={handleScrapeOpen} disabled={enriching}>
                   <NiSearch size={"medium"} />
@@ -582,30 +605,6 @@ export default function NicheDetailPage() {
       </Dialog>
 
       <Grid container spacing={5}>
-        {/* View Toggle */}
-        <Grid size={12}>
-          <Box className="mb-4 flex items-center justify-between">
-            <Box className="flex items-center gap-2">
-              <Button
-                variant={viewMode === "table" ? "contained" : "outlined"}
-                color={viewMode === "table" ? "primary" : "grey"}
-                onClick={() => setViewMode("table")}
-                size="small"
-              >
-                📋 Table
-              </Button>
-              <Button
-                variant={viewMode === "map" ? "contained" : "outlined"}
-                color={viewMode === "map" ? "primary" : "grey"}
-                onClick={() => setViewMode("map")}
-                size="small"
-              >
-                🗺️ Map ({mapRows.length})
-              </Button>
-            </Box>
-          </Box>
-        </Grid>
-
         {rows.length > 0 && (
           <Grid size={12}>
             <Box className="mb-4 rounded-lg bg-surface-container p-4">
