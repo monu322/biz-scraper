@@ -90,12 +90,51 @@ class EnrichmentService:
             print(f"Error fetching website {website}: {e}")
             return None
     
-    async def fetch_multiple_pages(self, website: str) -> str:
+    def extract_emails_from_html(self, soup: BeautifulSoup) -> list[str]:
+        """
+        Extract emails directly from HTML:
+        1. From mailto: links
+        2. Using regex on the HTML text
+        """
+        emails = []
+        
+        try:
+            # 1. Extract from mailto: links
+            for link in soup.find_all('a', href=True):
+                href = link.get('href', '')
+                if href.startswith('mailto:'):
+                    # Extract email from mailto:email@example.com
+                    email = href.replace('mailto:', '').split('?')[0].strip()
+                    if email and '@' in email:
+                        emails.append(email.lower())
+                        print(f"  → Found mailto email: {email}")
+            
+            # 2. Also check text content with regex
+            html_text = soup.get_text()
+            email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+            found_emails = re.findall(email_pattern, html_text)
+            for email in found_emails:
+                if email.lower() not in emails:
+                    emails.append(email.lower())
+            
+            # Filter out common false positives
+            filtered_emails = [e for e in emails if not any(
+                x in e.lower() for x in ['example.com', 'email.com', 'domain.com', 'yoursite.com']
+            )]
+            
+            return filtered_emails
+            
+        except Exception as e:
+            print(f"Error extracting emails from HTML: {e}")
+            return []
+    
+    async def fetch_multiple_pages(self, website: str) -> tuple[str, list[str]]:
         """
         Fetch homepage and potential contact/about pages.
-        Returns combined text from all pages.
+        Returns tuple of (combined text, list of directly found emails).
         """
         all_text = []
+        direct_emails = []
         
         try:
             # Ensure URL has protocol
@@ -112,16 +151,24 @@ class EnrichmentService:
                     response.raise_for_status()
                     soup = BeautifulSoup(response.text, 'html.parser')
                     
+                    # Extract emails directly from mailto links and HTML
+                    homepage_emails = self.extract_emails_from_html(soup)
+                    direct_emails.extend(homepage_emails)
+                    
+                    # If we already found emails, we might not need to check more pages
+                    if direct_emails:
+                        print(f"  → Found {len(direct_emails)} email(s) directly from HTML")
+                    
                     # Find potential contact pages
                     contact_urls = self.find_contact_page_urls(soup, base_url)
                     
-                    # Remove scripts/styles and get text
-                    for script in soup(["script", "style", "nav", "footer"]):
+                    # Remove scripts/styles and get text (for AI backup)
+                    for script in soup(["script", "style"]):
                         script.decompose()
                     homepage_text = soup.get_text(separator=' ', strip=True)[:3000]
                     all_text.append(homepage_text)
                     
-                    # 2. Fetch contact/about pages
+                    # 2. Fetch contact/about pages (even if we found emails, to find more)
                     for url in contact_urls[:2]:  # Limit to 2 additional pages
                         print(f"  → Fetching contact page: {url}")
                         try:
@@ -129,7 +176,13 @@ class EnrichmentService:
                             contact_response.raise_for_status()
                             contact_soup = BeautifulSoup(contact_response.text, 'html.parser')
                             
-                            for script in contact_soup(["script", "style", "nav", "footer"]):
+                            # Extract emails from this page too
+                            page_emails = self.extract_emails_from_html(contact_soup)
+                            for email in page_emails:
+                                if email not in direct_emails:
+                                    direct_emails.append(email)
+                            
+                            for script in contact_soup(["script", "style"]):
                                 script.decompose()
                             contact_text = contact_soup.get_text(separator=' ', strip=True)[:2000]
                             all_text.append(contact_text)
@@ -140,30 +193,38 @@ class EnrichmentService:
                     
                 except Exception as e:
                     print(f"  → Error fetching homepage: {e}")
-                    return ""
+                    return "", []
             
             # Combine all text
             combined_text = ' '.join(all_text)
-            return combined_text[:5000]  # Limit total to 5000 chars
+            return combined_text[:5000], direct_emails
             
         except Exception as e:
             print(f"Error in fetch_multiple_pages: {e}")
-            return ""
+            return "", []
     
     async def extract_email_from_website(self, website: str, business_name: str) -> Optional[str]:
         """
-        Fetch website content (homepage + contact pages) and use OpenAI to extract email.
+        Fetch website content (homepage + contact pages) and extract email.
+        First tries direct extraction from mailto links and regex.
+        Falls back to OpenAI if no email found directly.
         Returns the email if found, "N/A" if not found, or None if error.
         """
         try:
             # Fetch multiple pages (homepage + contact/about pages)
-            website_text = await self.fetch_multiple_pages(website)
+            website_text, direct_emails = await self.fetch_multiple_pages(website)
+            
+            # If we found emails directly from mailto links or regex, use the first one
+            if direct_emails:
+                print(f"  → Using directly extracted email: {direct_emails[0]}")
+                return direct_emails[0]
             
             if not website_text:
                 print(f"  → Could not fetch any website content")
                 return "N/A"
             
-            # Ask OpenAI to find email in the text
+            # Fall back to OpenAI if no direct emails found
+            print(f"  → No mailto link found, asking AI...")
             prompt = f"Find the contact email address from this website text (from homepage and contact pages). Only output the email address. If no email is found, return exactly 'N/A'.\n\nWebsite text:\n{website_text}"
             
             response = self.client.chat.completions.create(

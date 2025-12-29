@@ -20,6 +20,7 @@ import {
   IconButton,
   InputAdornment,
   InputLabel,
+  LinearProgress,
   ListItemIcon,
   ListItemText,
   Menu,
@@ -71,6 +72,8 @@ import NiEyeInactive from "@/icons/nexture/ni-eye-inactive";
 import NiFilter from "@/icons/nexture/ni-filter";
 import NiFilterPlus from "@/icons/nexture/ni-filter-plus";
 import NiMinusSquare from "@/icons/nexture/ni-minus-square";
+import NiArrowHistory from "@/icons/nexture/ni-arrow-history";
+import NiEmail from "@/icons/nexture/ni-email";
 import NiPenSquare from "@/icons/nexture/ni-pen-square";
 import NiPrinter from "@/icons/nexture/ni-printer";
 import NiSearch from "@/icons/nexture/ni-search";
@@ -573,7 +576,7 @@ export default function Page() {
                   onClick={handleEnrichEmails}
                   disabled={enriching || scraping || resetting}
                 >
-                  {enriching ? "..." : "✉️"}
+                  <NiEmail size={"medium"} />
                 </Button>
               </Tooltip>
 
@@ -586,7 +589,7 @@ export default function Page() {
                   onClick={handleResetNAEmails}
                   disabled={enriching || scraping || resetting}
                 >
-                  {resetting ? "..." : "🔄"}
+                  <NiArrowHistory size={"medium"} />
                 </Button>
               </Tooltip>
 
@@ -770,6 +773,45 @@ export default function Page() {
       </Dialog>
 
       <Grid container spacing={5}>
+        {/* Email Enrichment Progress Bar */}
+        {rows.length > 0 && (
+          <Grid size={12}>
+            <Box className="mb-4 rounded-lg bg-surface-container p-4">
+              <Box className="mb-2 flex items-center justify-between">
+                <Typography variant="body2" className="text-text-secondary">
+                  Email Enrichment Progress
+                </Typography>
+                <Typography variant="body2" className="font-medium">
+                  {(() => {
+                    const withEmail = rows.filter(r => r.email && r.email !== "N/A").length;
+                    const percentage = Math.round((withEmail / rows.length) * 100);
+                    return `${withEmail} / ${rows.length} contacts (${percentage}%)`;
+                  })()}
+                </Typography>
+              </Box>
+              <LinearProgress 
+                variant="determinate" 
+                value={(() => {
+                  const withEmail = rows.filter(r => r.email && r.email !== "N/A").length;
+                  return Math.round((withEmail / rows.length) * 100);
+                })()}
+                color="success"
+                className="h-2 rounded-full"
+              />
+              <Box className="mt-2 flex items-center justify-between">
+                <Typography variant="caption" className="text-text-disabled">
+                  {rows.filter(r => r.email && r.email !== "N/A").length} with emails
+                </Typography>
+                <Typography variant="caption" className="text-text-disabled">
+                  {rows.filter(r => r.email === "N/A").length} marked N/A
+                </Typography>
+                <Typography variant="caption" className="text-text-disabled">
+                  {rows.filter(r => !r.email).length} missing
+                </Typography>
+              </Box>
+            </Box>
+          </Grid>
+        )}
         <Grid size={12}>
           <DataGrid
           rows={rows}
