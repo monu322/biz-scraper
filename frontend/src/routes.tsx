@@ -79,6 +79,9 @@ const mainRoutes = generateRoutesFromMenuItems(leftMenuItems);
 const bottomRoutes = generateRoutesFromMenuItems(leftMenuBottomItems);
 const authRoutes = generateAuthRoutes();
 
+// Lazy load niche detail page
+const NicheDetailPage = React.lazy(() => import("./pages/app/crm/niche/page"));
+
 // Main Routes component
 const AppRoutes = () => {
   return (
@@ -90,6 +93,15 @@ const AppRoutes = () => {
         {/* Routes generated from menu items */}
         {mainRoutes}
         {bottomRoutes}
+        {/* Dynamic niche route */}
+        <Route 
+          path="/crm/niche/:nicheId" 
+          element={
+            <React.Suspense fallback={<Loading />}>
+              <NicheDetailPage />
+            </React.Suspense>
+          } 
+        />
       </Route>
       {/* Auth routes with AuthLayout */}
       <Route path="/auth" element={<AuthLayout />}>

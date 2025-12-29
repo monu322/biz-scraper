@@ -1,537 +1,180 @@
-import dayjs from "dayjs";
-import duration from "dayjs/plugin/duration";
-import relativeTime from "dayjs/plugin/relativeTime";
-import { SyntheticEvent, useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 
 import {
-  Avatar,
-  Badge,
   Box,
   Breadcrumbs,
   Button,
-  capitalize,
+  Card,
+  CardContent,
+  CardActionArea,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FilledInput,
-  FormControl,
-  IconButton,
-  InputAdornment,
-  InputLabel,
-  LinearProgress,
-  ListItemIcon,
-  ListItemText,
-  Menu,
-  MenuItem,
-  PopoverVirtualElement,
-  Select,
-  SelectProps,
   TextField,
   Tooltip,
   Typography,
+  Chip,
 } from "@mui/material";
 import { Grid } from "@mui/material";
-import { getGridDateOperators, GridColDef } from "@mui/x-data-grid";
-import {
-  ColumnsPanelTrigger,
-  DataGrid,
-  ExportCsv,
-  ExportPrint,
-  FilterPanelTrigger,
-  GridActionsCellItem,
-  GridRenderCellParams,
-  GridRowSelectionModel,
-  GridRowSpacingParams,
-  QuickFilter,
-  QuickFilterClear,
-  QuickFilterControl,
-  Toolbar,
-} from "@mui/x-data-grid";
 
-import DataGridDateTimeFilter from "@/components/data-grid/data-grid-date-time-filter";
-import { DataGridPaginationFullPage } from "@/components/data-grid/data-grid-pagination";
-import NiArrowDown from "@/icons/nexture/ni-arrow-down";
-import NiArrowInDown from "@/icons/nexture/ni-arrow-in-down";
-import NiArrowUp from "@/icons/nexture/ni-arrow-up";
+import NiPlus from "@/icons/nexture/ni-plus";
 import NiBinEmpty from "@/icons/nexture/ni-bin-empty";
-import NiCheckSquare from "@/icons/nexture/ni-check-square";
-import NiChevronDownSmall from "@/icons/nexture/ni-chevron-down-small";
-import NiChevronLeftRightSmall from "@/icons/nexture/ni-chevron-left-right-small";
 import NiChevronRightSmall from "@/icons/nexture/ni-chevron-right-small";
-import NiClock from "@/icons/nexture/ni-clock";
-import NiCols from "@/icons/nexture/ni-cols";
-import NiCross from "@/icons/nexture/ni-cross";
-import NiCrossSquare from "@/icons/nexture/ni-cross-square";
-import NiDocumentFull from "@/icons/nexture/ni-document-full";
-import NiDuplicate from "@/icons/nexture/ni-duplicate";
-import NiEllipsisVertical from "@/icons/nexture/ni-ellipsis-vertical";
-import NiExclamationSquare from "@/icons/nexture/ni-exclamation-square";
-import NiEyeInactive from "@/icons/nexture/ni-eye-inactive";
-import NiFilter from "@/icons/nexture/ni-filter";
-import NiFilterPlus from "@/icons/nexture/ni-filter-plus";
-import NiMinusSquare from "@/icons/nexture/ni-minus-square";
-import NiArrowHistory from "@/icons/nexture/ni-arrow-history";
-import NiEmail from "@/icons/nexture/ni-email";
-import NiPenSquare from "@/icons/nexture/ni-pen-square";
-import NiPrinter from "@/icons/nexture/ni-printer";
-import NiSearch from "@/icons/nexture/ni-search";
-import { cn } from "@/lib/utils";
 
-interface Contact {
-  id: string;
+interface Niche {
+  id: number;
   name: string;
-  email: string | null;
-  company: string | null;
-  phone: string | null;
-  address: string | null;
-  website: string | null;
-  rating: number | null;
-  reviews_count: number | null;
-  category: string | null;
-  status: string;
+  description: string | null;
+  locations: string[];
+  contact_count: number;
   created_at: string;
   updated_at: string;
 }
 
-type Row = {
-  id: string | number;
-  name: string;
-  avatar?: string;
-  email: string | null;
-  company: string | null;
-  phone: string | null;
-  address: string | null;
-  website: string | null;
-  rating: number | null;
-  lastContact: Date | null;
-  status: string;
-};
-dayjs.extend(duration);
-dayjs.extend(relativeTime);
-
 export default function Page() {
-  const [rowSelectionModel, setRowSelectionModel] = useState<GridRowSelectionModel>({
-    type: "include",
-    ids: new Set(),
-  });
-
-  const [scrapeDialogOpen, setScrapeDialogOpen] = useState(false);
-  const [scrapeKeyword, setScrapeKeyword] = useState("");
-  const [scrapeLocation, setScrapeLocation] = useState("");
-  const [scrapeLimit, setScrapeLimit] = useState<string>("20");
-  const [scraping, setScraping] = useState(false);
-  const [enriching, setEnriching] = useState(false);
-  const [resetting, setResetting] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [rows, setRows] = useState<Row[]>([]);
+  const navigate = useNavigate();
+  const [niches, setNiches] = useState<Niche[]>([]);
   const [loading, setLoading] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [newNicheName, setNewNicheName] = useState("");
+  const [newNicheDescription, setNewNicheDescription] = useState("");
+  const [newNicheLocations, setNewNicheLocations] = useState("");
+  const [creating, setCreating] = useState(false);
 
-  // Fetch contacts from backend
-  const fetchContacts = useCallback(async () => {
+  const fetchNiches = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("http://localhost:8000/api/contacts");
+      const response = await fetch("http://localhost:8000/api/niches");
       if (!response.ok) {
-        throw new Error("Failed to fetch contacts");
+        throw new Error("Failed to fetch niches");
       }
-      const data: Contact[] = await response.json();
-      
-      // Transform API data to table rows
-      const transformedRows: Row[] = data.map((contact) => ({
-        id: contact.id,
-        name: contact.name,
-        email: contact.email,
-        company: contact.company,
-        phone: contact.phone,
-        address: contact.address,
-        website: contact.website,
-        rating: contact.rating,
-        lastContact: contact.created_at ? new Date(contact.created_at) : null,
-        status: contact.status,
-      }));
-      
-      setRows(transformedRows);
+      const data: Niche[] = await response.json();
+      setNiches(data);
     } catch (error) {
-      console.error("Error fetching contacts:", error);
-      alert("Failed to load contacts. Please check your backend connection.");
+      console.error("Error fetching niches:", error);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Load contacts on mount
   useEffect(() => {
-    fetchContacts();
-  }, [fetchContacts]);
+    fetchNiches();
+  }, [fetchNiches]);
 
-  const handleScrapeOpen = () => {
-    setScrapeDialogOpen(true);
-  };
-
-  const handleScrapeClose = () => {
-    setScrapeDialogOpen(false);
-    setScrapeKeyword("");
-    setScrapeLocation("");
-  };
-
-  const handleScrapeSubmit = async () => {
-    setScraping(true);
+  const handleCreateNiche = async () => {
+    if (!newNicheName.trim()) return;
+    
+    setCreating(true);
     try {
-      const response = await fetch("http://localhost:8000/api/scrape", {
+      const locations = newNicheLocations
+        .split(",")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+      const response = await fetch("http://localhost:8000/api/niches", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          keyword: scrapeKeyword,
-          location: scrapeLocation,
-          limit: scrapeLimit,
+          name: newNicheName,
+          description: newNicheDescription || null,
+          locations: locations,
         }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to scrape data");
-      }
+      if (!response.ok) throw new Error("Failed to create niche");
 
-      const data = await response.json();
-      console.log("Scrape successful:", data);
-      
-      // Refresh the table data
-      await fetchContacts();
-      
-      // Close dialog and reset form
-      handleScrapeClose();
+      await fetchNiches();
+      setCreateDialogOpen(false);
+      setNewNicheName("");
+      setNewNicheDescription("");
+      setNewNicheLocations("");
     } catch (error) {
-      console.error("Scraping error:", error);
-      alert("Failed to scrape data. Please check your backend connection.");
+      console.error("Error creating niche:", error);
+      alert("Failed to create niche.");
     } finally {
-      setScraping(false);
+      setCreating(false);
     }
   };
 
-  const handleEnrichEmails = async () => {
-    if (!confirm("This will use OpenAI API to find missing emails from business websites. Continue?")) {
+  const handleDeleteNiche = async (nicheId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this niche? All contacts in this niche will have their niche_id set to null.")) {
       return;
     }
-    
-    setEnriching(true);
+
     try {
-      const response = await fetch("http://localhost:8000/api/enrich-emails", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to enrich emails");
-      }
-
-      const data = await response.json();
-      console.log("Enrichment successful:", data);
-      
-      // Refresh the table data
-      await fetchContacts();
-      
-      alert(`Enriched ${data.enriched_count} contacts with emails`);
-    } catch (error) {
-      console.error("Enrichment error:", error);
-      alert("Failed to enrich emails. Please check your backend connection and OpenAI API key.");
-    } finally {
-      setEnriching(false);
-    }
-  };
-
-  const handleResetNAEmails = async () => {
-    if (!confirm("This will reset all emails marked as 'N/A' back to null, allowing them to be enriched again. Continue?")) {
-      return;
-    }
-    
-    setResetting(true);
-    try {
-      const response = await fetch("http://localhost:8000/api/reset-na-emails", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to reset emails");
-      }
-
-      const data = await response.json();
-      console.log("Reset successful:", data);
-      
-      // Refresh the table data
-      await fetchContacts();
-      
-      alert(`Reset ${data.reset_count} email(s) from N/A to null`);
-    } catch (error) {
-      console.error("Reset error:", error);
-      alert("Failed to reset emails. Please check your backend connection.");
-    } finally {
-      setResetting(false);
-    }
-  };
-
-  const handleDeleteAllContacts = async () => {
-    if (!confirm("⚠️ WARNING: This will permanently delete ALL contacts from the database. This action cannot be undone!\n\nAre you sure you want to continue?")) {
-      return;
-    }
-    
-    setDeleting(true);
-    try {
-      const response = await fetch("http://localhost:8000/api/contacts", {
+      const response = await fetch(`http://localhost:8000/api/niches/${nicheId}`, {
         method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to delete contacts");
-      }
+      if (!response.ok) throw new Error("Failed to delete niche");
 
-      const data = await response.json();
-      console.log("Delete successful:", data);
-      
-      // Refresh the table data
-      await fetchContacts();
-      
-      alert(`Deleted ${data.deleted_count} contact(s)`);
+      await fetchNiches();
     } catch (error) {
-      console.error("Delete error:", error);
-      alert("Failed to delete contacts. Please check your backend connection.");
-    } finally {
-      setDeleting(false);
+      console.error("Error deleting niche:", error);
+      alert("Failed to delete niche.");
     }
   };
 
-  const getRowSpacing = useCallback((params: GridRowSpacingParams) => {
-    return {
-      top: params.isFirstVisible ? 0 : 5,
-      bottom: 5,
-    };
-  }, []);
+  const handleNicheClick = (nicheId: number) => {
+    navigate(`/crm/niche/${nicheId}`);
+  };
 
-  const columns: GridColDef<(typeof rows)[number]>[] = [
-    {
-      field: "id",
-      headerName: "ID",
-      width: 120,
-      type: "string",
-      renderCell: (params: GridRenderCellParams<any, string>) => (
-        <Link
-          to="#"
-          className="text-text-primary link-primary link-underline-none hover:text-primary py-2 transition-colors"
-        >
-          {params.value}
-        </Link>
-      ),
-    },
-    {
-      field: "name",
-      headerName: "Name",
-      width: 250,
-      type: "string",
-      renderCell: (params: GridRenderCellParams<any, string>) => {
-        const googleMapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(params.value || "")}`;
-        return (
-          <Box className="flex h-full items-center gap-2">
-            <Avatar className="bg-primary/80" alt={params.value} src={params.row.avatar}>
-              {params.value?.substring(0, 1)}
-            </Avatar>
-            <a
-              href={googleMapsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline"
-            >
-              {params.value}
-            </a>
+  return (
+    <>
+      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Create New Niche</DialogTitle>
+        <DialogContent>
+          <Box className="flex flex-col gap-4 pt-2">
+            <TextField
+              label="Niche Name"
+              variant="outlined"
+              fullWidth
+              value={newNicheName}
+              onChange={(e) => setNewNicheName(e.target.value)}
+              placeholder="e.g., Plumbing Businesses"
+              disabled={creating}
+              autoFocus
+            />
+            <TextField
+              label="Description (optional)"
+              variant="outlined"
+              fullWidth
+              multiline
+              rows={2}
+              value={newNicheDescription}
+              onChange={(e) => setNewNicheDescription(e.target.value)}
+              placeholder="e.g., Local plumbing and heating companies"
+              disabled={creating}
+            />
+            <TextField
+              label="Locations (comma separated)"
+              variant="outlined"
+              fullWidth
+              value={newNicheLocations}
+              onChange={(e) => setNewNicheLocations(e.target.value)}
+              placeholder="e.g., London, Manchester, Birmingham"
+              helperText="Enter multiple locations separated by commas"
+              disabled={creating}
+            />
           </Box>
-        );
-      },
-    },
-    { field: "avatar", headerName: "Avatar", width: 200, type: "string" },
-    {
-      field: "email",
-      headerName: "Email",
-      type: "string",
-      width: 220,
-    },
-    {
-      field: "company",
-      headerName: "Company",
-      width: 180,
-      type: "string",
-    },
-    {
-      field: "phone",
-      headerName: "Phone",
-      width: 160,
-      type: "string",
-    },
-    {
-      field: "address",
-      headerName: "Address",
-      width: 250,
-      type: "string",
-    },
-    {
-      field: "website",
-      headerName: "Website",
-      width: 200,
-      type: "string",
-      renderCell: (params: GridRenderCellParams<any, string>) => {
-        if (params.value) {
-          return (
-            <Link
-              to={params.value}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary link-primary hover:underline"
-            >
-              {params.value}
-            </Link>
-          );
-        }
-        return <Box></Box>;
-      },
-    },
-    {
-      field: "rating",
-      headerName: "Rating",
-      width: 120,
-      type: "number",
-      renderCell: (params: GridRenderCellParams<any, number>) => {
-        if (params.value) {
-          return (
-            <Box className="flex h-full items-center gap-1.5">
-              <span className="text-base leading-none">⭐</span>
-              <Typography variant="body2" className="leading-none">
-                {params.value.toFixed(1)}
-              </Typography>
-            </Box>
-          );
-        }
-        return <Box></Box>;
-      },
-    },
-    {
-      field: "lastContact",
-      headerName: "Last Contact",
-      align: "left",
-      headerAlign: "left",
-      width: 180,
-      type: "dateTime",
-      renderCell: (params: GridRenderCellParams<any, Date>) => {
-        const value = params.value;
-        if (value) {
-          const diff = dayjs(value).diff(dayjs());
-          return capitalize(dayjs.duration(diff, "milliseconds").humanize(true));
-        } else {
-          return <Box></Box>;
-        }
-      },
-      filterOperators: getGridDateOperators(false).map((item) => ({
-        ...item,
-        InputComponent: DataGridDateTimeFilter,
-      })),
-    },
-    {
-      field: "status",
-      headerName: "Status",
-      align: "left",
-      headerAlign: "left",
-      minWidth: 140,
-      flex: 1,
-      type: "singleSelect",
-      valueOptions: ["Active", "Inactive", "Prospect", "Lead"],
-      renderCell: (params: GridRenderCellParams<any, string>) => {
-        const value = params.value;
-        if (value === "Active") {
-          return (
-            <Button
-              className="pointer-events-none self-center"
-              size="tiny"
-              color="success"
-              variant="pastel"
-              startIcon={<NiCheckSquare size={"tiny"} />}
-            >
-              {value}
-            </Button>
-          );
-        } else if (value === "Prospect") {
-          return (
-            <Button
-              className="pointer-events-none self-center"
-              size="tiny"
-              color="warning"
-              variant="pastel"
-              startIcon={<NiClock size={"tiny"} />}
-            >
-              {value}
-            </Button>
-          );
-        } else if (value === "Lead") {
-          return (
-            <Button
-              className="pointer-events-none self-center"
-              size="tiny"
-              color="info"
-              variant="pastel"
-              startIcon={<NiMinusSquare size={"tiny"} />}
-            >
-              {value}
-            </Button>
-          );
-        } else {
-          return (
-            <Button
-              className="pointer-events-none self-center"
-              size="tiny"
-              color="grey"
-              variant="pastel"
-              startIcon={<NiExclamationSquare size={"tiny"} />}
-            >
-              {value}
-            </Button>
-          );
-        }
-      },
-    },
-  ];
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateDialogOpen(false)} color="grey" variant="text" disabled={creating}>
+            Cancel
+          </Button>
+          <Button onClick={handleCreateNiche} color="primary" variant="contained" disabled={!newNicheName.trim() || creating}>
+            {creating ? "Creating..." : "Create Niche"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-  function CustomToolbar() {
-    const [anchorElExport, setAnchorElExport] = useState<EventTarget | Element | PopoverVirtualElement | null>(null);
-    const openExport = Boolean(anchorElExport);
-    const handleClickExport = (event: Event | SyntheticEvent) => {
-      setAnchorElExport(event.currentTarget);
-    };
-    const handleCloseExport = () => {
-      setAnchorElExport(null);
-    };
-
-    const [anchorElSelection, setAnchorElSelection] = useState<EventTarget | Element | PopoverVirtualElement | null>(
-      null,
-    );
-    const openSelection = Boolean(anchorElSelection);
-    const handleClickSelection = (event: Event | SyntheticEvent) => {
-      setAnchorElSelection(event.currentTarget);
-    };
-    const handleCloseSelection = () => {
-      setAnchorElSelection(null);
-    };
-
-    return (
-      <Toolbar className="min-h-auto border-none">
-        <Grid container spacing={5} className="mb-4 w-full">
-          <Grid container spacing={2.5} className="w-full" size={12}>
-            <Grid size={{ xs: 12, md: "grow" }}>
+      <Grid container spacing={5}>
+        <Grid size={12}>
+          <Box className="mb-4 flex items-center justify-between">
+            <Box>
               <Typography variant="h1" component="h1" className="mb-0">
                 CRM
               </Typography>
@@ -541,417 +184,101 @@ export default function Page() {
                 </Link>
                 <Typography variant="body2">CRM</Typography>
               </Breadcrumbs>
-            </Grid>
-
-            <Grid size={{ xs: 12, md: "auto" }} className="flex flex-row items-start gap-2">
-              {rowSelectionModel.ids.size > 0 && (
-                <>
-                  <Tooltip title="Selection">
-                    <Button
-                      className="surface-standard"
-                      size="medium"
-                      color="grey"
-                      variant="surface"
-                      onClick={handleClickSelection}
-                      endIcon={
-                        <NiChevronRightSmall
-                          size={"medium"}
-                          className={cn("transition-transform", openSelection && "rotate-90")}
-                        />
-                      }
-                    >
-                      {rowSelectionModel.ids.size > 1
-                        ? rowSelectionModel.ids.size + " Contacts"
-                        : rowSelectionModel.ids.size + " Contact"}
-                    </Button>
-                  </Tooltip>
-
-                  <Menu
-                    anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                    transformOrigin={{ vertical: "top", horizontal: "right" }}
-                    anchorEl={anchorElSelection as Element}
-                    open={openSelection}
-                    onClose={handleCloseSelection}
-                    className="mt-1"
-                  >
-                    <MenuItem onClick={() => handleCloseSelection()}>
-                      <ListItemIcon>
-                        <NiPenSquare size="medium" />
-                      </ListItemIcon>
-                      <ListItemText>Edit</ListItemText>
-                    </MenuItem>
-                    <MenuItem onClick={() => handleCloseSelection()}>
-                      <ListItemIcon>
-                        <NiDuplicate size="medium" />
-                      </ListItemIcon>
-                      <ListItemText>Duplicate</ListItemText>
-                    </MenuItem>
-                    <MenuItem onClick={() => handleCloseSelection()}>
-                      <ListItemIcon>
-                        <NiCrossSquare size="medium" />
-                      </ListItemIcon>
-                      <ListItemText>Delete</ListItemText>
-                    </MenuItem>
-                  </Menu>
-                </>
-              )}
-
-              <Tooltip title="Scrape">
-                <Button
-                  className="icon-only surface-standard"
-                  size="medium"
-                  color="primary"
-                  variant="surface"
-                  onClick={handleScrapeOpen}
-                  disabled={enriching}
-                >
-                  <NiSearch size={"medium"} />
-                </Button>
-              </Tooltip>
-
-              <Tooltip title="Enrich Emails">
-                <Button
-                  className="icon-only surface-standard"
-                  size="medium"
-                  color="success"
-                  variant="surface"
-                  onClick={handleEnrichEmails}
-                  disabled={enriching || scraping || resetting}
-                >
-                  <NiEmail size={"medium"} />
-                </Button>
-              </Tooltip>
-
-              <Tooltip title="Reset N/A Emails">
-                <Button
-                  className="icon-only surface-standard"
-                  size="medium"
-                  color="warning"
-                  variant="surface"
-                  onClick={handleResetNAEmails}
-                  disabled={enriching || scraping || resetting || deleting}
-                >
-                  <NiArrowHistory size={"medium"} />
-                </Button>
-              </Tooltip>
-
-              <Tooltip title="Delete All Contacts">
-                <Button
-                  className="icon-only surface-standard"
-                  size="medium"
-                  color="error"
-                  variant="surface"
-                  onClick={handleDeleteAllContacts}
-                  disabled={enriching || scraping || resetting || deleting}
-                >
-                  <NiBinEmpty size={"medium"} />
-                </Button>
-              </Tooltip>
-
-              <Tooltip title="Columns">
-                <ColumnsPanelTrigger
-                  render={(props) => (
-                    <Button
-                      {...props}
-                      className="icon-only surface-standard"
-                      size="medium"
-                      color="grey"
-                      variant="surface"
-                    >
-                      <NiCols size={"medium"} />
-                    </Button>
-                  )}
-                />
-              </Tooltip>
-
-              <Tooltip title="Filters">
-                <FilterPanelTrigger
-                  render={(props, state) => (
-                    <Button
-                      {...props}
-                      className="icon-only surface-standard"
-                      size="medium"
-                      color="grey"
-                      variant="surface"
-                    >
-                      <Badge badgeContent={state.filterCount} color="primary" variant="dot">
-                        <NiFilter size={"medium"} />
-                      </Badge>
-                    </Button>
-                  )}
-                />
-              </Tooltip>
-
-              <Tooltip title="Export">
-                <Button
-                  className="icon-only surface-standard"
-                  size="medium"
-                  color="grey"
-                  variant="surface"
-                  startIcon={<NiArrowInDown size={"medium"} />}
-                  onClick={handleClickExport}
-                />
-              </Tooltip>
-
-              <Menu
-                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                transformOrigin={{ vertical: "top", horizontal: "right" }}
-                anchorEl={anchorElExport as Element}
-                open={openExport}
-                onClose={handleCloseExport}
-                className="mt-1"
-              >
-                <ExportPrint
-                  render={
-                    <MenuItem>
-                      <ListItemIcon>
-                        <NiPrinter size="medium" />
-                      </ListItemIcon>
-                      <ListItemText>Print</ListItemText>
-                    </MenuItem>
-                  }
-                  onClick={handleCloseExport}
-                />
-                <ExportCsv
-                  render={
-                    <MenuItem>
-                      <ListItemIcon>
-                        <NiDocumentFull size="medium" />
-                      </ListItemIcon>
-                      <ListItemText>Export CSV</ListItemText>
-                    </MenuItem>
-                  }
-                  onClick={handleCloseExport}
-                />
-              </Menu>
-            </Grid>
-          </Grid>
-
-          <Grid container spacing={5} className="w-full" size={12}>
-            <FormControl variant="filled" size="medium" className="surface mb-0 flex-1">
-              <InputLabel>Search</InputLabel>
-              <QuickFilter
-                render={() => (
-                  <QuickFilterControl
-                    render={({ ref, ...controlProps }, state) => (
-                      <FilledInput
-                        {...controlProps}
-                        inputRef={ref}
-                        endAdornment={
-                          <>
-                            <InputAdornment position="end" className={cn(state.value === "" && "hidden")}>
-                              <QuickFilterClear edge="end">
-                                <NiCross size="medium" className="text-text-disabled" />
-                              </QuickFilterClear>
-                            </InputAdornment>
-                            <InputAdornment position="end" className={cn(state.value !== "" && "hidden")}>
-                              <IconButton edge="end">
-                                {<NiSearch size="medium" className="text-text-disabled" />}
-                              </IconButton>
-                            </InputAdornment>
-                          </>
-                        }
-                      />
-                    )}
-                  />
-                )}
-              />
-            </FormControl>
-          </Grid>
-        </Grid>
-      </Toolbar>
-    );
-  }
-
-  return (
-    <>
-      <Dialog open={scrapeDialogOpen} onClose={handleScrapeClose} maxWidth="sm" fullWidth>
-        <DialogTitle>{scraping ? "Scraping..." : "Scrape Data"}</DialogTitle>
-        <DialogContent>
-          <Box className="flex flex-col gap-4 pt-2">
-            <TextField
-              label="Keyword"
-              variant="outlined"
-              fullWidth
-              value={scrapeKeyword}
-              onChange={(e) => setScrapeKeyword(e.target.value)}
-              placeholder="e.g., hvac, restaurants, plumbers"
-              disabled={scraping}
-            />
-            <TextField
-              label="Location"
-              variant="outlined"
-              fullWidth
-              value={scrapeLocation}
-              onChange={(e) => setScrapeLocation(e.target.value)}
-              placeholder="e.g., London, New York"
-              disabled={scraping}
-            />
-            <TextField
-              label="Number of Records"
-              variant="outlined"
-              fullWidth
-              type="number"
-              value={scrapeLimit}
-              onChange={(e) => setScrapeLimit(e.target.value)}
-              onBlur={() => {
-                const value = parseInt(scrapeLimit) || 20;
-                if (value < 1) setScrapeLimit("1");
-                else if (value > 50) setScrapeLimit("50");
-                else setScrapeLimit(String(value));
-              }}
-              inputProps={{ min: 1, max: 50 }}
-              helperText="1-50 records"
-              disabled={scraping}
-            />
-            {scraping && (
-              <Box className="flex items-center justify-center gap-2 py-4">
-                <Typography variant="body2" color="text.secondary">
-                  Scraping data, please wait...
-                </Typography>
-              </Box>
-            )}
+            </Box>
+            <Button
+              color="primary"
+              variant="contained"
+              startIcon={<NiPlus size="medium" />}
+              onClick={() => setCreateDialogOpen(true)}
+            >
+              New Niche
+            </Button>
           </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleScrapeClose} color="grey" variant="text" disabled={scraping}>
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleScrapeSubmit} 
-            color="primary" 
-            variant="contained" 
-            disabled={!scrapeKeyword || !scrapeLocation || scraping}
-          >
-            {scraping ? "Scraping..." : "Scrape"}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        </Grid>
 
-      <Grid container spacing={5}>
-        {/* Email Enrichment Progress Bar */}
-        {rows.length > 0 && (
+        {loading ? (
           <Grid size={12}>
-            <Box className="mb-4 rounded-lg bg-surface-container p-4">
-              <Box className="mb-2 flex items-center justify-between">
-                <Typography variant="body2" className="text-text-secondary">
-                  Email Enrichment Progress
-                </Typography>
-                <Typography variant="body2" className="font-medium">
-                  {(() => {
-                    const withEmail = rows.filter(r => r.email && r.email !== "N/A").length;
-                    const percentage = Math.round((withEmail / rows.length) * 100);
-                    return `${withEmail} / ${rows.length} contacts (${percentage}%)`;
-                  })()}
-                </Typography>
-              </Box>
-              <LinearProgress 
-                variant="determinate" 
-                value={(() => {
-                  const withEmail = rows.filter(r => r.email && r.email !== "N/A").length;
-                  return Math.round((withEmail / rows.length) * 100);
-                })()}
-                color="success"
-                className="h-2 rounded-full"
-              />
-              <Box className="mt-2 flex items-center justify-between">
-                <Typography variant="caption" className="text-text-disabled">
-                  {rows.filter(r => r.email && r.email !== "N/A").length} with emails
-                </Typography>
-                <Typography variant="caption" className="text-text-disabled">
-                  {rows.filter(r => r.email === "N/A").length} marked N/A
-                </Typography>
-                <Typography variant="caption" className="text-text-disabled">
-                  {rows.filter(r => !r.email).length} missing
-                </Typography>
-              </Box>
+            <Box className="flex items-center justify-center py-12">
+              <Typography variant="body1" color="text.secondary">
+                Loading niches...
+              </Typography>
             </Box>
           </Grid>
+        ) : niches.length === 0 ? (
+          <Grid size={12}>
+            <Box className="flex flex-col items-center justify-center py-12 text-center">
+              <Typography variant="h3" className="mb-2">
+                No Niches Yet
+              </Typography>
+              <Typography variant="body1" color="text.secondary" className="mb-4">
+                Create your first niche to start organizing your contacts by industry or category.
+              </Typography>
+              <Button
+                color="primary"
+                variant="contained"
+                startIcon={<NiPlus size="medium" />}
+                onClick={() => setCreateDialogOpen(true)}
+              >
+                Create Your First Niche
+              </Button>
+            </Box>
+          </Grid>
+        ) : (
+          niches.map((niche) => (
+            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={niche.id}>
+              <Card className="h-full">
+                <CardActionArea onClick={() => handleNicheClick(niche.id)} className="h-full">
+                  <CardContent className="h-full flex flex-col">
+                    <Box className="flex items-start justify-between mb-2">
+                      <Typography variant="h3" className="mb-0 flex-1">
+                        {niche.name}
+                      </Typography>
+                      <Tooltip title="Delete Niche">
+                        <Button
+                          className="icon-only"
+                          size="small"
+                          color="error"
+                          variant="text"
+                          onClick={(e) => handleDeleteNiche(niche.id, e)}
+                        >
+                          <NiBinEmpty size="small" />
+                        </Button>
+                      </Tooltip>
+                    </Box>
+                    
+                    {niche.description && (
+                      <Typography variant="body2" color="text.secondary" className="mb-3">
+                        {niche.description}
+                      </Typography>
+                    )}
+
+                    <Box className="flex-1" />
+
+                    <Box className="mt-3">
+                      {niche.locations && niche.locations.length > 0 && (
+                        <Box className="flex flex-wrap gap-1 mb-3">
+                          {niche.locations.slice(0, 3).map((location, idx) => (
+                            <Chip key={idx} label={location} size="small" variant="outlined" />
+                          ))}
+                          {niche.locations.length > 3 && (
+                            <Chip label={`+${niche.locations.length - 3} more`} size="small" variant="outlined" />
+                          )}
+                        </Box>
+                      )}
+
+                      <Box className="flex items-center justify-between">
+                        <Typography variant="body2" color="text.secondary">
+                          {niche.contact_count} contact{niche.contact_count !== 1 ? "s" : ""}
+                        </Typography>
+                        <NiChevronRightSmall size="medium" className="text-text-secondary" />
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </CardActionArea>
+              </Card>
+            </Grid>
+          ))
         )}
-        <Grid size={12}>
-          <DataGrid
-          rows={rows}
-          columns={columns}
-          initialState={{
-            columns: { columnVisibilityModel: { avatar: false } },
-            pagination: {
-              paginationModel: {
-                pageSize: 10,
-              },
-            },
-          }}
-          getRowSpacing={getRowSpacing}
-          rowHeight={68}
-          columnHeaderHeight={32}
-          checkboxSelection
-          disableRowSelectionOnClick
-          pageSizeOptions={[10]}
-          className="full-page border-none"
-          pagination
-          slotProps={{
-            panel: {
-              className: "mt-1!",
-            },
-            main: {
-              className: "min-h-[815px]! overflow-visible",
-            },
-          }}
-          slots={{
-            basePagination: DataGridPaginationFullPage,
-            columnSortedDescendingIcon: () => {
-              return <NiArrowDown size={"small"}></NiArrowDown>;
-            },
-            columnSortedAscendingIcon: () => {
-              return <NiArrowUp size={"small"}></NiArrowUp>;
-            },
-            columnFilteredIcon: () => {
-              return <NiFilterPlus size={"small"}></NiFilterPlus>;
-            },
-            columnReorderIcon: () => {
-              return <NiChevronLeftRightSmall size={"small"}></NiChevronLeftRightSmall>;
-            },
-            columnMenuIcon: () => {
-              return <NiEllipsisVertical size={"small"}></NiEllipsisVertical>;
-            },
-            columnMenuSortAscendingIcon: NiArrowUp,
-            columnMenuSortDescendingIcon: NiArrowDown,
-            columnMenuFilterIcon: NiFilter,
-            columnMenuHideIcon: NiEyeInactive,
-            columnMenuClearIcon: NiCross,
-            columnMenuManageColumnsIcon: NiCols,
-            filterPanelDeleteIcon: NiCross,
-            filterPanelRemoveAllIcon: NiBinEmpty,
-            baseSelect: (props: any) => {
-              const propsCasted = props as SelectProps;
-              return (
-                <FormControl size="small" variant="outlined">
-                  <InputLabel>{props.label}</InputLabel>
-                  <Select {...propsCasted} IconComponent={NiChevronDownSmall} MenuProps={{ className: "outlined" }} />
-                </FormControl>
-              );
-            },
-            quickFilterIcon: () => {
-              return <NiSearch size={"medium"} />;
-            },
-            quickFilterClearIcon: () => {
-              return <NiCross size={"medium"} />;
-            },
-            baseButton: (props) => {
-              return <Button {...props} variant="pastel" color="grey"></Button>;
-            },
-            moreActionsIcon: () => {
-              return <NiEllipsisVertical size={"medium"} />;
-            },
-            toolbar: CustomToolbar,
-          }}
-          rowSelectionModel={rowSelectionModel}
-          onRowSelectionModelChange={(rowSelectionModel: GridRowSelectionModel) => {
-            setRowSelectionModel(rowSelectionModel);
-          }}
-          hideFooterSelectedRowCount
-          showToolbar
-          />
-        </Grid>
       </Grid>
     </>
   );

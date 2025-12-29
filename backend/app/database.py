@@ -100,6 +100,7 @@ class Database:
                     "reviews_count": contact.reviews_count,
                     "category": contact.category,
                     "status": contact.status,
+                    "niche_id": contact.niche_id,
                 }
                 
                 if existing:
@@ -191,6 +192,124 @@ class Database:
             return count
         except Exception as e:
             print(f"Error deleting all contacts: {e}")
+            raise
+    
+    # ============== NICHE METHODS ==============
+    
+    async def create_niche(self, name: str, description: str = None, locations: List[str] = None) -> dict:
+        """Create a new niche."""
+        try:
+            response = self.client.table("niches").insert({
+                "name": name,
+                "description": description,
+                "locations": locations or [],
+            }).execute()
+            
+            return response.data[0] if response.data else None
+        except Exception as e:
+            print(f"Error creating niche: {e}")
+            raise
+    
+    async def get_niches(self) -> List[dict]:
+        """Get all niches with contact counts."""
+        try:
+            # Get niches
+            response = self.client.table("niches") \
+                .select("*") \
+                .order("created_at", desc=True) \
+                .execute()
+            
+            niches = response.data if response.data else []
+            
+            # Get contact counts for each niche
+            for niche in niches:
+                count_response = self.client.table("contacts") \
+                    .select("id") \
+                    .eq("niche_id", niche["id"]) \
+                    .execute()
+                niche["contact_count"] = len(count_response.data) if count_response.data else 0
+            
+            return niches
+        except Exception as e:
+            print(f"Error getting niches: {e}")
+            raise
+    
+    async def get_niche_by_id(self, niche_id: int) -> Optional[dict]:
+        """Get a specific niche by ID with contact count."""
+        try:
+            response = self.client.table("niches") \
+                .select("*") \
+                .eq("id", niche_id) \
+                .execute()
+            
+            if response.data:
+                niche = response.data[0]
+                # Get contact count
+                count_response = self.client.table("contacts") \
+                    .select("id") \
+                    .eq("niche_id", niche_id) \
+                    .execute()
+                niche["contact_count"] = len(count_response.data) if count_response.data else 0
+                return niche
+            return None
+        except Exception as e:
+            print(f"Error getting niche: {e}")
+            raise
+    
+    async def update_niche(self, niche_id: int, data: dict) -> Optional[dict]:
+        """Update a niche."""
+        try:
+            response = self.client.table("niches") \
+                .update(data) \
+                .eq("id", niche_id) \
+                .execute()
+            
+            return response.data[0] if response.data else None
+        except Exception as e:
+            print(f"Error updating niche: {e}")
+            raise
+    
+    async def delete_niche(self, niche_id: int) -> bool:
+        """Delete a niche."""
+        try:
+            self.client.table("niches").delete().eq("id", niche_id).execute()
+            return True
+        except Exception as e:
+            print(f"Error deleting niche: {e}")
+            raise
+    
+    async def get_contacts_by_niche(self, niche_id: int, limit: int = 100, offset: int = 0) -> List[dict]:
+        """Get contacts for a specific niche."""
+        try:
+            response = self.client.table("contacts") \
+                .select("*") \
+                .eq("niche_id", niche_id) \
+                .order("created_at", desc=True) \
+                .range(offset, offset + limit - 1) \
+                .execute()
+            
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"Error getting contacts by niche: {e}")
+            raise
+    
+    async def delete_contacts_by_niche(self, niche_id: int) -> int:
+        """Delete all contacts for a specific niche."""
+        try:
+            # First get count
+            count_response = self.client.table("contacts") \
+                .select("id") \
+                .eq("niche_id", niche_id) \
+                .execute()
+            count = len(count_response.data) if count_response.data else 0
+            
+            # Delete contacts
+            if count > 0:
+                self.client.table("contacts").delete().eq("niche_id", niche_id).execute()
+            
+            return count
+        except Exception as e:
+            print(f"Error deleting contacts by niche: {e}")
             raise
 
 

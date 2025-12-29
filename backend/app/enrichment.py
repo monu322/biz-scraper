@@ -351,6 +351,59 @@ class EnrichmentService:
         except Exception as e:
             print(f"Error in enrich_all_contacts: {e}")
             raise
+    
+    async def enrich_contacts_by_niche(self, niche_id: int) -> dict:
+        """
+        Enrich contacts for a specific niche that don't have emails or have N/A.
+        Returns stats about the enrichment process.
+        """
+        try:
+            # Get contacts for this niche
+            contacts = await db.get_contacts_by_niche(niche_id, limit=1000)
+            
+            enriched_count = 0
+            skipped_count = 0
+            failed_count = 0
+            
+            for contact in contacts:
+                # Skip if already has email or marked N/A
+                if contact.get("email") == "N/A":
+                    skipped_count += 1
+                    continue
+                
+                if contact.get("email"):
+                    skipped_count += 1
+                    continue
+                
+                if not contact.get("website"):
+                    skipped_count += 1
+                    continue
+                
+                # Try to find email
+                print(f"Enriching {contact['name']}...")
+                email = await self.extract_email_from_website(
+                    contact["website"],
+                    contact["name"]
+                )
+                
+                if email:
+                    await db.update_contact_email(contact["id"], email)
+                    enriched_count += 1
+                    print(f"  → Found: {email}")
+                else:
+                    failed_count += 1
+                    print(f"  → Failed to enrich")
+            
+            return {
+                "enriched_count": enriched_count,
+                "skipped_count": skipped_count,
+                "failed_count": failed_count,
+                "total_processed": len(contacts)
+            }
+            
+        except Exception as e:
+            print(f"Error in enrich_contacts_by_niche: {e}")
+            raise
 
 
 # Singleton instance

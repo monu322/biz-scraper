@@ -1,6 +1,29 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
+
+
+# Niche Models
+class NicheCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    locations: Optional[List[str]] = []
+
+
+class NicheResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    locations: Optional[List[str]] = []
+    created_at: datetime
+    updated_at: datetime
+    contact_count: Optional[int] = 0
+
+
+class NicheUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    locations: Optional[List[str]] = None
 
 
 class ScrapeRequest(BaseModel):
@@ -8,6 +31,7 @@ class ScrapeRequest(BaseModel):
     keyword: str
     location: str
     limit: int = 20  # Default to 20, max 50
+    niche_id: Optional[int] = None  # Associate contacts with a niche
 
 
 class ContactCreate(BaseModel):
@@ -22,6 +46,7 @@ class ContactCreate(BaseModel):
     reviews_count: Optional[int] = None
     category: Optional[str] = None
     status: str = "Lead"
+    niche_id: Optional[int] = None
 
 
 class ContactResponse(BaseModel):
