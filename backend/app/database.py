@@ -101,6 +101,8 @@ class Database:
                     "category": contact.category,
                     "status": contact.status,
                     "niche_id": contact.niche_id,
+                    "latitude": contact.latitude,
+                    "longitude": contact.longitude,
                 }
                 
                 if existing:

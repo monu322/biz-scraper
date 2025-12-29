@@ -47,6 +47,8 @@ class ContactCreate(BaseModel):
     category: Optional[str] = None
     status: str = "Lead"
     niche_id: Optional[int] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 
 class ContactResponse(BaseModel):
@@ -64,6 +66,8 @@ class ContactResponse(BaseModel):
     status: str
     created_at: datetime
     last_contact: Optional[datetime] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 
 class ScrapeResponse(BaseModel):

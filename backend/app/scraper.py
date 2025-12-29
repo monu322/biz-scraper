@@ -49,6 +49,11 @@ class ScraperService:
             # Transform Apify results to ContactCreate models
             contacts = []
             for item in dataset_items:
+                # Extract coordinates from location object
+                location = item.get("location", {})
+                lat = location.get("lat") if isinstance(location, dict) else None
+                lng = location.get("lng") if isinstance(location, dict) else None
+                
                 contact = ContactCreate(
                     name=item.get("title", "Unknown"),
                     email=self._extract_email(item),
@@ -59,7 +64,9 @@ class ScraperService:
                     rating=float(item.get("totalScore", 0)) if item.get("totalScore") else None,
                     reviews_count=int(item.get("reviewsCount", 0)) if item.get("reviewsCount") else None,
                     category=item.get("categoryName", None),
-                    status="Lead"
+                    status="Lead",
+                    latitude=float(lat) if lat else None,
+                    longitude=float(lng) if lng else None,
                 )
                 contacts.append(contact)
             

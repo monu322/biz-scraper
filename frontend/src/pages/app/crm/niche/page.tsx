@@ -1,8 +1,19 @@
 import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import relativeTime from "dayjs/plugin/relativeTime";
-import { SyntheticEvent, useCallback, useEffect, useState } from "react";
+import { SyntheticEvent, useCallback, useEffect, useState, useMemo } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
+import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+
+// Fix for default marker icons in webpack/vite
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
+  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
+  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+});
 
 import {
   Avatar,
@@ -100,6 +111,8 @@ interface Contact {
   status: string;
   created_at: string;
   updated_at: string;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 type Row = {
@@ -114,7 +127,11 @@ type Row = {
   rating: number | null;
   lastContact: Date | null;
   status: string;
+  latitude: number | null;
+  longitude: number | null;
 };
+
+type ViewMode = "table" | "map";
 
 dayjs.extend(duration);
 dayjs.extend(relativeTime);
@@ -140,6 +157,21 @@ export default function NicheDetailPage() {
   const [clearing, setClearing] = useState(false);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
+
+  // Get rows with coordinates for map
+  const mapRows = useMemo(() => 
+    rows.filter(r => r.latitude && r.longitude), 
+    [rows]
+  );
+
+  // Calculate map center from contacts
+  const mapCenter = useMemo((): [number, number] => {
+    if (mapRows.length === 0) return [51.505, -0.09]; // London default
+    const avgLat = mapRows.reduce((sum, r) => sum + (r.latitude || 0), 0) / mapRows.length;
+    const avgLng = mapRows.reduce((sum, r) => sum + (r.longitude || 0), 0) / mapRows.length;
+    return [avgLat, avgLng];
+  }, [mapRows]);
 
   // Fetch niche details
   const fetchNiche = useCallback(async () => {
@@ -180,6 +212,8 @@ export default function NicheDetailPage() {
         rating: contact.rating,
         lastContact: contact.created_at ? new Date(contact.created_at) : null,
         status: contact.status,
+        latitude: contact.latitude,
+        longitude: contact.longitude,
       }));
       
       setRows(transformedRows);
@@ -548,6 +582,30 @@ export default function NicheDetailPage() {
       </Dialog>
 
       <Grid container spacing={5}>
+        {/* View Toggle */}
+        <Grid size={12}>
+          <Box className="mb-4 flex items-center justify-between">
+            <Box className="flex items-center gap-2">
+              <Button
+                variant={viewMode === "table" ? "contained" : "outlined"}
+                color={viewMode === "table" ? "primary" : "grey"}
+                onClick={() => setViewMode("table")}
+                size="small"
+              >
+                📋 Table
+              </Button>
+              <Button
+                variant={viewMode === "map" ? "contained" : "outlined"}
+                color={viewMode === "map" ? "primary" : "grey"}
+                onClick={() => setViewMode("map")}
+                size="small"
+              >
+                🗺️ Map ({mapRows.length})
+              </Button>
+            </Box>
+          </Box>
+        </Grid>
+
         {rows.length > 0 && (
           <Grid size={12}>
             <Box className="mb-4 rounded-lg bg-surface-container p-4">
@@ -641,51 +699,106 @@ export default function NicheDetailPage() {
             </Box>
           </Grid>
         )}
-        <Grid size={12}>
-          <DataGrid
-            rows={rows}
-            columns={columns}
-            initialState={{ columns: { columnVisibilityModel: { avatar: false } }, pagination: { paginationModel: { pageSize: 10 } } }}
-            getRowSpacing={getRowSpacing}
-            rowHeight={68}
-            columnHeaderHeight={32}
-            checkboxSelection
-            disableRowSelectionOnClick
-            pageSizeOptions={[10]}
-            className="full-page border-none"
-            pagination
-            slotProps={{ panel: { className: "mt-1!" }, main: { className: "min-h-[600px]! overflow-visible" } }}
-            slots={{
-              basePagination: DataGridPaginationFullPage,
-              columnSortedDescendingIcon: () => <NiArrowDown size={"small"} />,
-              columnSortedAscendingIcon: () => <NiArrowUp size={"small"} />,
-              columnFilteredIcon: () => <NiFilterPlus size={"small"} />,
-              columnReorderIcon: () => <NiChevronLeftRightSmall size={"small"} />,
-              columnMenuIcon: () => <NiEllipsisVertical size={"small"} />,
-              columnMenuSortAscendingIcon: NiArrowUp,
-              columnMenuSortDescendingIcon: NiArrowDown,
-              columnMenuFilterIcon: NiFilter,
-              columnMenuHideIcon: NiEyeInactive,
-              columnMenuClearIcon: NiCross,
-              columnMenuManageColumnsIcon: NiCols,
-              filterPanelDeleteIcon: NiCross,
-              filterPanelRemoveAllIcon: NiBinEmpty,
-              baseSelect: (props: any) => {
-                const propsCasted = props as SelectProps;
-                return <FormControl size="small" variant="outlined"><InputLabel>{props.label}</InputLabel><Select {...propsCasted} IconComponent={NiChevronDownSmall} MenuProps={{ className: "outlined" }} /></FormControl>;
-              },
-              quickFilterIcon: () => <NiSearch size={"medium"} />,
-              quickFilterClearIcon: () => <NiCross size={"medium"} />,
-              baseButton: (props) => <Button {...props} variant="pastel" color="grey" />,
-              moreActionsIcon: () => <NiEllipsisVertical size={"medium"} />,
-              toolbar: CustomToolbar,
-            }}
-            rowSelectionModel={rowSelectionModel}
-            onRowSelectionModelChange={(model) => setRowSelectionModel(model)}
-            hideFooterSelectedRowCount
-            showToolbar
-          />
-        </Grid>
+        {viewMode === "map" ? (
+          <Grid size={12}>
+            <Box className="rounded-lg overflow-hidden" style={{ height: "600px" }}>
+              {mapRows.length > 0 ? (
+                <MapContainer 
+                  center={mapCenter} 
+                  zoom={11} 
+                  style={{ height: "100%", width: "100%" }}
+                  scrollWheelZoom={true}
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  {mapRows.map((row) => (
+                    <Marker 
+                      key={row.id} 
+                      position={[row.latitude!, row.longitude!]}
+                    >
+                      <Popup>
+                        <Box className="min-w-[200px]">
+                          <Typography variant="subtitle2" className="font-bold">{row.name}</Typography>
+                          {row.address && (
+                            <Typography variant="body2" className="text-gray-600">{row.address}</Typography>
+                          )}
+                          {row.phone && (
+                            <Typography variant="body2">📞 {row.phone}</Typography>
+                          )}
+                          {row.email && (
+                            <Typography variant="body2">✉️ {row.email}</Typography>
+                          )}
+                          {row.rating && (
+                            <Typography variant="body2">⭐ {row.rating.toFixed(1)}</Typography>
+                          )}
+                          {row.website && (
+                            <a href={row.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm">
+                              🌐 Website
+                            </a>
+                          )}
+                        </Box>
+                      </Popup>
+                    </Marker>
+                  ))}
+                </MapContainer>
+              ) : (
+                <Box className="flex h-full items-center justify-center bg-gray-100 rounded-lg">
+                  <Typography variant="body1" className="text-gray-500">
+                    No contacts with location data. Scrape new contacts to see them on the map.
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          </Grid>
+        ) : (
+          <Grid size={12}>
+            <DataGrid
+              rows={rows}
+              columns={columns}
+              initialState={{ columns: { columnVisibilityModel: { avatar: false } }, pagination: { paginationModel: { pageSize: 10 } } }}
+              getRowSpacing={getRowSpacing}
+              rowHeight={68}
+              columnHeaderHeight={32}
+              checkboxSelection
+              disableRowSelectionOnClick
+              pageSizeOptions={[10]}
+              className="full-page border-none"
+              pagination
+              slotProps={{ panel: { className: "mt-1!" }, main: { className: "min-h-[600px]! overflow-visible" } }}
+              slots={{
+                basePagination: DataGridPaginationFullPage,
+                columnSortedDescendingIcon: () => <NiArrowDown size={"small"} />,
+                columnSortedAscendingIcon: () => <NiArrowUp size={"small"} />,
+                columnFilteredIcon: () => <NiFilterPlus size={"small"} />,
+                columnReorderIcon: () => <NiChevronLeftRightSmall size={"small"} />,
+                columnMenuIcon: () => <NiEllipsisVertical size={"small"} />,
+                columnMenuSortAscendingIcon: NiArrowUp,
+                columnMenuSortDescendingIcon: NiArrowDown,
+                columnMenuFilterIcon: NiFilter,
+                columnMenuHideIcon: NiEyeInactive,
+                columnMenuClearIcon: NiCross,
+                columnMenuManageColumnsIcon: NiCols,
+                filterPanelDeleteIcon: NiCross,
+                filterPanelRemoveAllIcon: NiBinEmpty,
+                baseSelect: (props: any) => {
+                  const propsCasted = props as SelectProps;
+                  return <FormControl size="small" variant="outlined"><InputLabel>{props.label}</InputLabel><Select {...propsCasted} IconComponent={NiChevronDownSmall} MenuProps={{ className: "outlined" }} /></FormControl>;
+                },
+                quickFilterIcon: () => <NiSearch size={"medium"} />,
+                quickFilterClearIcon: () => <NiCross size={"medium"} />,
+                baseButton: (props) => <Button {...props} variant="pastel" color="grey" />,
+                moreActionsIcon: () => <NiEllipsisVertical size={"medium"} />,
+                toolbar: CustomToolbar,
+              }}
+              rowSelectionModel={rowSelectionModel}
+              onRowSelectionModelChange={(model) => setRowSelectionModel(model)}
+              hideFooterSelectedRowCount
+              showToolbar
+            />
+          </Grid>
+        )}
       </Grid>
     </>
   );
