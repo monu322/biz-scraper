@@ -282,11 +282,6 @@ export default function Page() {
       return;
     }
     
-    // Double confirmation for safety
-    if (!confirm("Are you absolutely sure? Type 'yes' in the next prompt to confirm.")) {
-      return;
-    }
-    
     setDeleting(true);
     try {
       const response = await fetch("http://localhost:8000/api/contacts", {
