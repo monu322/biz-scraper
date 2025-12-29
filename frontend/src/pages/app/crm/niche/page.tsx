@@ -3,7 +3,7 @@ import duration from "dayjs/plugin/duration";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { MouseEvent, useCallback, useEffect, useState, useMemo } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -139,6 +139,46 @@ type ViewMode = "table" | "map";
 
 dayjs.extend(duration);
 dayjs.extend(relativeTime);
+
+// Custom CSS for magnifying glass cursor on map
+const mapCursorStyle = `
+  .leaflet-container.map-scrape-mode {
+    cursor: zoom-in !important;
+  }
+  .leaflet-container.map-scrape-mode .leaflet-marker-icon,
+  .leaflet-container.map-scrape-mode .leaflet-marker-shadow {
+    cursor: pointer !important;
+  }
+`;
+
+// Reverse geocode function using Nominatim
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=12`,
+      { headers: { "User-Agent": "BusinessDashboard/1.0" } }
+    );
+    if (!response.ok) throw new Error("Geocode failed");
+    const data = await response.json();
+    // Extract city/town/village and country
+    const addr = data.address;
+    const locality = addr.city || addr.town || addr.village || addr.suburb || addr.county || "";
+    const country = addr.country || "";
+    return locality ? `${locality}, ${country}` : data.display_name?.split(",").slice(0, 3).join(",") || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  } catch {
+    return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  }
+}
+
+// Map click handler component
+function MapClickHandler({ onLocationClick }: { nicheName: string; onLocationClick: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click: (e) => {
+      onLocationClick(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
 
 export default function NicheDetailPage() {
   const { nicheId } = useParams<{ nicheId: string }>();
@@ -724,56 +764,64 @@ export default function NicheDetailPage() {
         )}
         {viewMode === "map" ? (
           <Grid size={12}>
+            {/* Inject CSS for magnifying glass cursor */}
+            <style>{mapCursorStyle}</style>
             <Box className="rounded-lg overflow-hidden" style={{ height: "600px" }}>
-              {mapRows.length > 0 ? (
-                <MapContainer 
-                  center={mapCenter} 
-                  zoom={11} 
-                  style={{ height: "100%", width: "100%" }}
-                  scrollWheelZoom={true}
-                >
-                  <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
-                  {mapRows.map((row) => (
-                    <Marker 
-                      key={row.id} 
-                      position={[row.latitude!, row.longitude!]}
-                    >
-                      <Popup>
-                        <Box className="min-w-[200px]">
-                          <Typography variant="subtitle2" className="font-bold">{row.name}</Typography>
-                          {row.address && (
-                            <Typography variant="body2" className="text-gray-600">{row.address}</Typography>
-                          )}
-                          {row.phone && (
-                            <Typography variant="body2">📞 {row.phone}</Typography>
-                          )}
-                          {row.email && (
-                            <Typography variant="body2">✉️ {row.email}</Typography>
-                          )}
-                          {row.rating && (
-                            <Typography variant="body2">⭐ {row.rating.toFixed(1)}</Typography>
-                          )}
-                          {row.website && (
-                            <a href={row.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm">
-                              🌐 Website
-                            </a>
-                          )}
-                        </Box>
-                      </Popup>
-                    </Marker>
-                  ))}
-                </MapContainer>
-              ) : (
-                <Box className="flex h-full items-center justify-center bg-gray-100 rounded-lg">
-                  <Typography variant="body1" className="text-gray-500">
-                    No contacts with location data. Scrape new contacts to see them on the map.
-                  </Typography>
-                </Box>
-              )}
+              <MapContainer 
+                center={mapCenter} 
+                zoom={11} 
+                style={{ height: "100%", width: "100%" }}
+                scrollWheelZoom={true}
+                className="map-scrape-mode"
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                {/* Map click handler for scraping */}
+                <MapClickHandler 
+                  nicheName={niche?.name || ""} 
+                  onLocationClick={async (lat, lng) => {
+                    const location = await reverseGeocode(lat, lng);
+                    setScrapeKeyword(niche?.name || "");
+                    setScrapeLocation(location);
+                    setScrapeDialogOpen(true);
+                  }} 
+                />
+                {mapRows.map((row) => (
+                  <Marker 
+                    key={row.id} 
+                    position={[row.latitude!, row.longitude!]}
+                  >
+                    <Popup>
+                      <Box className="min-w-[200px]">
+                        <Typography variant="subtitle2" className="font-bold">{row.name}</Typography>
+                        {row.address && (
+                          <Typography variant="body2" className="text-gray-600">{row.address}</Typography>
+                        )}
+                        {row.phone && (
+                          <Typography variant="body2">📞 {row.phone}</Typography>
+                        )}
+                        {row.email && (
+                          <Typography variant="body2">✉️ {row.email}</Typography>
+                        )}
+                        {row.rating && (
+                          <Typography variant="body2">⭐ {row.rating.toFixed(1)}</Typography>
+                        )}
+                        {row.website && (
+                          <a href={row.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm">
+                            🌐 Website
+                          </a>
+                        )}
+                      </Box>
+                    </Popup>
+                  </Marker>
+                ))}
+              </MapContainer>
             </Box>
+            <Typography variant="caption" className="text-text-secondary mt-2 block text-center">
+              💡 Click anywhere on the map to scrape businesses in that area
+            </Typography>
           </Grid>
         ) : (
           <Grid size={12}>
