@@ -4,6 +4,7 @@ from app.config import get_settings
 from app.models import ScrapeRequest, ScrapeResponse, ContactResponse
 from app.database import db
 from app.scraper import ScraperService
+from app.enrichment import enrichment_service
 from typing import List
 
 # Initialize settings
@@ -132,6 +133,36 @@ async def get_contact(contact_id: int):
         raise HTTPException(
             status_code=500,
             detail=f"An error occurred while fetching the contact: {str(e)}"
+        )
+
+
+@app.post("/api/enrich-emails")
+async def enrich_emails():
+    """
+    Enrich all contacts with missing emails using OpenAI.
+    
+    This endpoint:
+    1. Finds all contacts without emails (null or N/A)
+    2. Uses OpenAI to extract emails from business websites
+    3. Updates contacts with found emails or marks as N/A if not found
+    4. Returns statistics about the enrichment process
+    """
+    try:
+        result = await enrichment_service.enrich_all_contacts()
+        
+        return {
+            "message": f"Enriched {result['enriched_count']} contact(s)",
+            "enriched_count": result["enriched_count"],
+            "skipped_count": result["skipped_count"],
+            "failed_count": result["failed_count"],
+            "total_processed": result["total_processed"]
+        }
+    
+    except Exception as e:
+        print(f"Error in enrich_emails: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An error occurred while enriching emails: {str(e)}"
         )
 
 

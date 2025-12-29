@@ -150,6 +150,19 @@ class Database:
         except Exception as e:
             print(f"Error getting contact: {e}")
             raise
+    
+    async def update_contact_email(self, contact_id: int, email: str) -> Optional[dict]:
+        """Update a contact's email address."""
+        try:
+            response = self.client.table("contacts") \
+                .update({"email": email}) \
+                .eq("id", contact_id) \
+                .execute()
+            
+            return response.data[0] if response.data else None
+        except Exception as e:
+            print(f"Error updating contact email: {e}")
+            raise
 
 
 # Singleton instance

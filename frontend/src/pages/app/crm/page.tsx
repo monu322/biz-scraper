@@ -119,6 +119,7 @@ export default function Page() {
   const [scrapeLocation, setScrapeLocation] = useState("");
   const [scrapeLimit, setScrapeLimit] = useState<number>(20);
   const [scraping, setScraping] = useState(false);
+  const [enriching, setEnriching] = useState(false);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -202,6 +203,39 @@ export default function Page() {
       alert("Failed to scrape data. Please check your backend connection.");
     } finally {
       setScraping(false);
+    }
+  };
+
+  const handleEnrichEmails = async () => {
+    if (!confirm("This will use OpenAI API to find missing emails from business websites. Continue?")) {
+      return;
+    }
+    
+    setEnriching(true);
+    try {
+      const response = await fetch("http://localhost:8000/api/enrich-emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to enrich emails");
+      }
+
+      const data = await response.json();
+      console.log("Enrichment successful:", data);
+      
+      // Refresh the table data
+      await fetchContacts();
+      
+      alert(`Enriched ${data.enriched_count} contacts with emails`);
+    } catch (error) {
+      console.error("Enrichment error:", error);
+      alert("Failed to enrich emails. Please check your backend connection and OpenAI API key.");
+    } finally {
+      setEnriching(false);
     }
   };
 
@@ -490,8 +524,22 @@ export default function Page() {
                   color="primary"
                   variant="surface"
                   onClick={handleScrapeOpen}
+                  disabled={enriching}
                 >
                   <NiSearch size={"medium"} />
+                </Button>
+              </Tooltip>
+
+              <Tooltip title="Enrich Emails">
+                <Button
+                  className="icon-only surface-standard"
+                  size="medium"
+                  color="success"
+                  variant="surface"
+                  onClick={handleEnrichEmails}
+                  disabled={enriching || scraping}
+                >
+                  {enriching ? "..." : "✉️"}
                 </Button>
               </Tooltip>
 

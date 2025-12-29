@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     # Apify Configuration
     apify_api_token: str
     
+    # OpenAI Configuration
+    openai_api_key: str
+    
     # Supabase Configuration
     supabase_url: str
     supabase_key: str
