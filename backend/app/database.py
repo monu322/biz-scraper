@@ -163,6 +163,19 @@ class Database:
         except Exception as e:
             print(f"Error updating contact email: {e}")
             raise
+    
+    async def reset_na_emails_to_null(self) -> int:
+        """Reset all emails with value 'N/A' to null."""
+        try:
+            response = self.client.table("contacts") \
+                .update({"email": None}) \
+                .eq("email", "N/A") \
+                .execute()
+            
+            return len(response.data) if response.data else 0
+        except Exception as e:
+            print(f"Error resetting N/A emails: {e}")
+            raise
 
 
 # Singleton instance

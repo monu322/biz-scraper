@@ -166,6 +166,30 @@ async def enrich_emails():
         )
 
 
+@app.post("/api/reset-na-emails")
+async def reset_na_emails():
+    """
+    Reset all emails marked as 'N/A' back to null.
+    
+    This allows re-trying email enrichment on contacts that were previously
+    marked as having no email found.
+    """
+    try:
+        count = await db.reset_na_emails_to_null()
+        
+        return {
+            "message": f"Reset {count} email(s) from N/A to null",
+            "reset_count": count
+        }
+    
+    except Exception as e:
+        print(f"Error in reset_na_emails: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An error occurred while resetting emails: {str(e)}"
+        )
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(

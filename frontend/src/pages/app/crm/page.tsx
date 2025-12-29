@@ -120,6 +120,7 @@ export default function Page() {
   const [scrapeLimit, setScrapeLimit] = useState<number>(20);
   const [scraping, setScraping] = useState(false);
   const [enriching, setEnriching] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -236,6 +237,39 @@ export default function Page() {
       alert("Failed to enrich emails. Please check your backend connection and OpenAI API key.");
     } finally {
       setEnriching(false);
+    }
+  };
+
+  const handleResetNAEmails = async () => {
+    if (!confirm("This will reset all emails marked as 'N/A' back to null, allowing them to be enriched again. Continue?")) {
+      return;
+    }
+    
+    setResetting(true);
+    try {
+      const response = await fetch("http://localhost:8000/api/reset-na-emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to reset emails");
+      }
+
+      const data = await response.json();
+      console.log("Reset successful:", data);
+      
+      // Refresh the table data
+      await fetchContacts();
+      
+      alert(`Reset ${data.reset_count} email(s) from N/A to null`);
+    } catch (error) {
+      console.error("Reset error:", error);
+      alert("Failed to reset emails. Please check your backend connection.");
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -537,9 +571,22 @@ export default function Page() {
                   color="success"
                   variant="surface"
                   onClick={handleEnrichEmails}
-                  disabled={enriching || scraping}
+                  disabled={enriching || scraping || resetting}
                 >
                   {enriching ? "..." : "✉️"}
+                </Button>
+              </Tooltip>
+
+              <Tooltip title="Reset N/A Emails">
+                <Button
+                  className="icon-only surface-standard"
+                  size="medium"
+                  color="warning"
+                  variant="surface"
+                  onClick={handleResetNAEmails}
+                  disabled={enriching || scraping || resetting}
+                >
+                  {resetting ? "..." : "🔄"}
                 </Button>
               </Tooltip>
 
