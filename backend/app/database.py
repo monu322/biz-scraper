@@ -60,6 +60,70 @@ class Database:
             print(f"Error creating contacts batch: {e}")
             raise
     
+    async def upsert_contacts_batch(self, contacts: List[ContactCreate]) -> dict:
+        """
+        Upsert multiple contacts - insert new, update existing.
+        Returns dict with counts of new and updated contacts.
+        """
+        try:
+            new_contacts = []
+            updated_contacts = []
+            
+            # Get all existing contacts to check for duplicates
+            existing_response = self.client.table("contacts").select("*").execute()
+            existing_contacts = existing_response.data if existing_response.data else []
+            
+            # Create lookup maps for fast matching
+            existing_by_phone = {c["phone"]: c for c in existing_contacts if c.get("phone")}
+            existing_by_name_address = {
+                (c["name"], c.get("address")): c 
+                for c in existing_contacts 
+                if c.get("name") and c.get("address")
+            }
+            
+            for contact in contacts:
+                # Check if contact exists by phone or name+address
+                existing = None
+                if contact.phone and contact.phone in existing_by_phone:
+                    existing = existing_by_phone[contact.phone]
+                elif contact.name and contact.address:
+                    existing = existing_by_name_address.get((contact.name, contact.address))
+                
+                contact_data = {
+                    "name": contact.name,
+                    "email": contact.email,
+                    "company": contact.company,
+                    "phone": contact.phone,
+                    "address": contact.address,
+                    "website": contact.website,
+                    "rating": contact.rating,
+                    "reviews_count": contact.reviews_count,
+                    "category": contact.category,
+                    "status": contact.status,
+                }
+                
+                if existing:
+                    # Update existing contact
+                    self.client.table("contacts") \
+                        .update(contact_data) \
+                        .eq("id", existing["id"]) \
+                        .execute()
+                    updated_contacts.append(existing["id"])
+                else:
+                    # Insert new contact
+                    result = self.client.table("contacts").insert(contact_data).execute()
+                    if result.data:
+                        new_contacts.append(result.data[0]["id"])
+            
+            return {
+                "new_count": len(new_contacts),
+                "updated_count": len(updated_contacts),
+                "total_processed": len(contacts)
+            }
+        except Exception as e:
+            print(f"Error upserting contacts batch: {e}")
+            raise
+    
     async def get_contacts(self, limit: int = 100, offset: int = 0) -> List[dict]:
         """Get all contacts with pagination."""
         try:

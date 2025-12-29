@@ -49,12 +49,12 @@ async def scrape_contacts(request: ScrapeRequest):
     This endpoint:
     1. Calls Apify's Google Maps scraper with the provided keyword and location
     2. Processes the results
-    3. Stores the contacts in Supabase database
-    4. Returns the count of contacts scraped
+    3. Upserts contacts in Supabase database (inserts new, updates existing)
+    4. Returns counts of new and updated contacts
     """
     try:
         # Scrape data from Google Maps
-        contacts, run_id = await scraper.scrape_google_maps(
+        contacts, run_id, scrape_stats = await scraper.scrape_google_maps(
             keyword=request.keyword,
             location=request.location
         )
@@ -66,12 +66,25 @@ async def scrape_contacts(request: ScrapeRequest):
                 run_id=run_id
             )
         
-        # Store contacts in database
-        stored_contacts = await db.create_contacts_batch(contacts)
+        # Upsert contacts in database (insert new, update existing)
+        upsert_result = await db.upsert_contacts_batch(contacts)
+        
+        new_count = upsert_result["new_count"]
+        updated_count = upsert_result["updated_count"]
+        
+        # Build detailed message
+        if new_count > 0 and updated_count > 0:
+            message = f"Added {new_count} new contact(s) and updated {updated_count} existing contact(s)"
+        elif new_count > 0:
+            message = f"Added {new_count} new contact(s)"
+        elif updated_count > 0:
+            message = f"Updated {updated_count} existing contact(s) with latest data"
+        else:
+            message = "No changes - all contacts already exist with current data"
         
         return ScrapeResponse(
-            message=f"Successfully scraped and stored {len(stored_contacts)} contacts",
-            total_contacts=len(stored_contacts),
+            message=message,
+            total_contacts=new_count + updated_count,
             run_id=run_id
         )
     

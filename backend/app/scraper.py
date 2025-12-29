@@ -1,7 +1,7 @@
 from apify_client import ApifyClient
 from app.config import get_settings
 from app.models import ContactCreate
-from typing import List
+from typing import List, Dict
 
 
 class ScraperService:
@@ -11,7 +11,7 @@ class ScraperService:
         settings = get_settings()
         self.client = ApifyClient(settings.apify_api_token)
     
-    async def scrape_google_maps(self, keyword: str, location: str) -> tuple[List[ContactCreate], str]:
+    async def scrape_google_maps(self, keyword: str, location: str) -> tuple[List[ContactCreate], str, Dict]:
         """
         Scrape Google Maps using Apify's Google Maps Scraper.
         Extracts business information including emails when available.
@@ -55,7 +55,12 @@ class ScraperService:
                 )
                 contacts.append(contact)
             
-            return contacts, run["id"]
+            stats = {
+                "scraped_count": len(contacts),
+                "apify_run_id": run["id"]
+            }
+            
+            return contacts, run["id"], stats
         
         except Exception as e:
             print(f"Error scraping Google Maps: {e}")
