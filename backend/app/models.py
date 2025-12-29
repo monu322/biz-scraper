@@ -7,6 +7,7 @@ class ScrapeRequest(BaseModel):
     """Request model for scraping data."""
     keyword: str
     location: str
+    limit: int = 20  # Default to 20, max 50
 
 
 class ContactCreate(BaseModel):

@@ -99,6 +99,9 @@ type Row = {
   email: string | null;
   company: string | null;
   phone: string | null;
+  address: string | null;
+  website: string | null;
+  rating: number | null;
   lastContact: Date | null;
   status: string;
 };
@@ -114,6 +117,7 @@ export default function Page() {
   const [scrapeDialogOpen, setScrapeDialogOpen] = useState(false);
   const [scrapeKeyword, setScrapeKeyword] = useState("");
   const [scrapeLocation, setScrapeLocation] = useState("");
+  const [scrapeLimit, setScrapeLimit] = useState<number>(20);
   const [scraping, setScraping] = useState(false);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
@@ -135,6 +139,9 @@ export default function Page() {
         email: contact.email,
         company: contact.company,
         phone: contact.phone,
+        address: contact.address,
+        website: contact.website,
+        rating: contact.rating,
         lastContact: contact.created_at ? new Date(contact.created_at) : null,
         status: contact.status,
       }));
@@ -174,6 +181,7 @@ export default function Page() {
         body: JSON.stringify({
           keyword: scrapeKeyword,
           location: scrapeLocation,
+          limit: scrapeLimit,
         }),
       });
 
@@ -183,10 +191,11 @@ export default function Page() {
 
       const data = await response.json();
       console.log("Scrape successful:", data);
-      alert(`Successfully scraped ${data.total_contacts} contacts!`);
       
       // Refresh the table data
       await fetchContacts();
+      
+      // Close dialog and reset form
       handleScrapeClose();
     } catch (error) {
       console.error("Scraping error:", error);
@@ -252,6 +261,49 @@ export default function Page() {
       headerName: "Phone",
       width: 160,
       type: "string",
+    },
+    {
+      field: "address",
+      headerName: "Address",
+      width: 250,
+      type: "string",
+    },
+    {
+      field: "website",
+      headerName: "Website",
+      width: 200,
+      type: "string",
+      renderCell: (params: GridRenderCellParams<any, string>) => {
+        if (params.value) {
+          return (
+            <Link
+              to={params.value}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary link-primary hover:underline"
+            >
+              {params.value}
+            </Link>
+          );
+        }
+        return <Box></Box>;
+      },
+    },
+    {
+      field: "rating",
+      headerName: "Rating",
+      width: 120,
+      type: "number",
+      renderCell: (params: GridRenderCellParams<any, number>) => {
+        if (params.value) {
+          return (
+            <Box className="flex items-center gap-1">
+              <Typography variant="body2">⭐ {params.value.toFixed(1)}</Typography>
+            </Box>
+          );
+        }
+        return <Box></Box>;
+      },
     },
     {
       field: "lastContact",
@@ -335,20 +387,6 @@ export default function Page() {
           );
         }
       },
-    },
-    {
-      field: "actions",
-      headerName: "Actions",
-      type: "actions",
-      minWidth: 80,
-      flex: 1,
-      align: "right",
-      headerAlign: "right",
-      getActions: () => [
-        <GridActionsCellItem key={1} icon={<NiPenSquare size="medium" />} label="Edit" showInMenu />,
-        <GridActionsCellItem key={2} icon={<NiDuplicate size="medium" />} label="Duplicate" showInMenu />,
-        <GridActionsCellItem key={0} icon={<NiCrossSquare size="medium" />} label="Delete" showInMenu />,
-      ],
     },
   ];
 
@@ -572,7 +610,7 @@ export default function Page() {
   return (
     <>
       <Dialog open={scrapeDialogOpen} onClose={handleScrapeClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Scrape Data</DialogTitle>
+        <DialogTitle>{scraping ? "Scraping..." : "Scrape Data"}</DialogTitle>
         <DialogContent>
           <Box className="flex flex-col gap-4 pt-2">
             <TextField
@@ -581,7 +619,8 @@ export default function Page() {
               fullWidth
               value={scrapeKeyword}
               onChange={(e) => setScrapeKeyword(e.target.value)}
-              placeholder="Enter keyword to search"
+              placeholder="e.g., hvac, restaurants, plumbers"
+              disabled={scraping}
             />
             <TextField
               label="Location"
@@ -589,16 +628,45 @@ export default function Page() {
               fullWidth
               value={scrapeLocation}
               onChange={(e) => setScrapeLocation(e.target.value)}
-              placeholder="Enter location"
+              placeholder="e.g., London, New York"
+              disabled={scraping}
             />
+            <TextField
+              label="Number of Records"
+              variant="outlined"
+              fullWidth
+              type="number"
+              value={scrapeLimit}
+              onChange={(e) => {
+                const value = parseInt(e.target.value);
+                if (value >= 1 && value <= 50) {
+                  setScrapeLimit(value);
+                }
+              }}
+              inputProps={{ min: 1, max: 50 }}
+              helperText="Maximum 50 records"
+              disabled={scraping}
+            />
+            {scraping && (
+              <Box className="flex items-center justify-center gap-2 py-4">
+                <Typography variant="body2" color="text.secondary">
+                  Scraping data, please wait...
+                </Typography>
+              </Box>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleScrapeClose} color="grey" variant="text">
+          <Button onClick={handleScrapeClose} color="grey" variant="text" disabled={scraping}>
             Cancel
           </Button>
-          <Button onClick={handleScrapeSubmit} color="primary" variant="contained" disabled={!scrapeKeyword || !scrapeLocation}>
-            Scrape
+          <Button 
+            onClick={handleScrapeSubmit} 
+            color="primary" 
+            variant="contained" 
+            disabled={!scrapeKeyword || !scrapeLocation || scraping}
+          >
+            {scraping ? "Scraping..." : "Scrape"}
           </Button>
         </DialogActions>
       </Dialog>

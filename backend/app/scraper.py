@@ -11,18 +11,26 @@ class ScraperService:
         settings = get_settings()
         self.client = ApifyClient(settings.apify_api_token)
     
-    async def scrape_google_maps(self, keyword: str, location: str) -> tuple[List[ContactCreate], str, Dict]:
+    async def scrape_google_maps(self, keyword: str, location: str, limit: int = 20) -> tuple[List[ContactCreate], str, Dict]:
         """
         Scrape Google Maps using Apify's Google Maps Scraper.
         Extracts business information including emails when available.
-        Returns a tuple of (contacts list, run_id).
+        Returns a tuple of (contacts list, run_id, stats).
+        
+        Args:
+            keyword: Search keyword (e.g., "hvac", "restaurants")
+            location: Location to search in (e.g., "London", "New York")
+            limit: Maximum number of results to scrape (default: 20, max: 50)
         """
         try:
+            # Ensure limit is within bounds
+            limit = max(1, min(limit, 50))
+            
             # Prepare the Actor input with email extraction enabled
             run_input = {
                 "searchStringsArray": [keyword],
                 "locationQuery": location,
-                "maxCrawledPlacesPerSearch": 20,  # Limit results
+                "maxCrawledPlacesPerSearch": limit,  # Use provided limit
                 "language": "en",
                 "scrapeEmailFromWebsites": True,  # Visit websites to find emails
                 "scrapePeopleAlsoSearch": False,   # Skip related searches

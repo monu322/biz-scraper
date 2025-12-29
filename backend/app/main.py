@@ -56,7 +56,8 @@ async def scrape_contacts(request: ScrapeRequest):
         # Scrape data from Google Maps
         contacts, run_id, scrape_stats = await scraper.scrape_google_maps(
             keyword=request.keyword,
-            location=request.location
+            location=request.location,
+            limit=request.limit
         )
         
         if not contacts:
