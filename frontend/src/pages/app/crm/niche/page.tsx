@@ -471,123 +471,147 @@ export default function NicheDetailPage() {
     },
   ];
 
+  // State for export menu
+  const [anchorElExport, setAnchorElExport] = useState<EventTarget | Element | PopoverVirtualElement | null>(null);
+  const openExport = Boolean(anchorElExport);
+
+  // Search state for map view
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  // Filter rows based on search query for map view
+  const filteredMapRows = useMemo(() => {
+    if (!searchQuery) return mapRows;
+    const query = searchQuery.toLowerCase();
+    return mapRows.filter(r => 
+      r.name.toLowerCase().includes(query) ||
+      r.address?.toLowerCase().includes(query) ||
+      r.email?.toLowerCase().includes(query) ||
+      r.phone?.toLowerCase().includes(query)
+    );
+  }, [mapRows, searchQuery]);
+
   function CustomToolbar() {
-    const [anchorElExport, setAnchorElExport] = useState<EventTarget | Element | PopoverVirtualElement | null>(null);
-    const openExport = Boolean(anchorElExport);
-
     return (
-      <Toolbar className="min-h-auto border-none">
-        <Grid container spacing={5} className="mb-4 w-full">
-          <Grid container spacing={2.5} className="w-full" size={12}>
-            <Grid size={{ xs: 12, md: "grow" }}>
-              <Typography variant="h1" component="h1" className="mb-0">
-                {niche?.name || "Loading..."}
-              </Typography>
-              <Breadcrumbs>
-                <Link color="inherit" to="/">Home</Link>
-                <Link color="inherit" to="/crm">CRM</Link>
-                <Typography variant="body2">{niche?.name}</Typography>
-              </Breadcrumbs>
-            </Grid>
-
-            <Grid size={{ xs: 12, md: "auto" }} className="flex flex-row items-start gap-2">
-              {/* View Toggle */}
-              <Box className="border-grey-200 inline-flex rounded-2xl border border-solid p-1.75 mr-2">
-                <ToggleButtonGroup value={viewMode} exclusive onChange={handleViewModeChange} size="small">
-                  <ToggleButton value="table">
-                    <NiList size="small" />
-                  </ToggleButton>
-                  <ToggleButton value="map">
-                    <NiSigns size="small" />
-                  </ToggleButton>
-                </ToggleButtonGroup>
-              </Box>
-
-              <Tooltip title="Scrape">
-                <Button className="icon-only surface-standard" size="medium" color="primary" variant="surface" onClick={handleScrapeOpen} disabled={enriching}>
-                  <NiSearch size={"medium"} />
-                </Button>
-              </Tooltip>
-
-              <Tooltip title="Enrich Emails">
-                <Button className="icon-only surface-standard" size="medium" color="success" variant="surface" onClick={handleEnrichEmails} disabled={enriching || scraping}>
-                  <NiEmail size={"medium"} />
-                </Button>
-              </Tooltip>
-
-              <Tooltip title="Reset N/A Emails">
-                <Button className="icon-only surface-standard" size="medium" color="warning" variant="surface" onClick={handleResetNAEmails} disabled={enriching || scraping || resetting || deleting || clearing}>
-                  <NiArrowHistory size={"medium"} />
-                </Button>
-              </Tooltip>
-
-              <Tooltip title="Clear All Emails">
-                <Button className="icon-only surface-standard" size="medium" color="secondary" variant="surface" onClick={handleClearAllEmails} disabled={enriching || scraping || resetting || deleting || clearing}>
-                  <NiCrossSquare size={"medium"} />
-                </Button>
-              </Tooltip>
-
-              <Tooltip title="Delete All Contacts">
-                <Button className="icon-only surface-standard" size="medium" color="error" variant="surface" onClick={handleDeleteAllContacts} disabled={enriching || scraping || deleting}>
-                  <NiBinEmpty size={"medium"} />
-                </Button>
-              </Tooltip>
-
-              <Tooltip title="Columns">
-                <ColumnsPanelTrigger render={(props) => (
-                  <Button {...props} className="icon-only surface-standard" size="medium" color="grey" variant="surface">
-                    <NiCols size={"medium"} />
-                  </Button>
-                )} />
-              </Tooltip>
-
-              <Tooltip title="Filters">
-                <FilterPanelTrigger render={(props, state) => (
-                  <Button {...props} className="icon-only surface-standard" size="medium" color="grey" variant="surface">
-                    <Badge badgeContent={state.filterCount} color="primary" variant="dot">
-                      <NiFilter size={"medium"} />
-                    </Badge>
-                  </Button>
-                )} />
-              </Tooltip>
-
-              <Tooltip title="Export">
-                <Button className="icon-only surface-standard" size="medium" color="grey" variant="surface" startIcon={<NiArrowInDown size={"medium"} />} onClick={(e) => setAnchorElExport(e.currentTarget)} />
-              </Tooltip>
-
-              <Menu anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }} anchorEl={anchorElExport as Element} open={openExport} onClose={() => setAnchorElExport(null)} className="mt-1">
-                <ExportPrint render={<MenuItem><ListItemIcon><NiPrinter size="medium" /></ListItemIcon><ListItemText>Print</ListItemText></MenuItem>} onClick={() => setAnchorElExport(null)} />
-                <ExportCsv render={<MenuItem><ListItemIcon><NiDocumentFull size="medium" /></ListItemIcon><ListItemText>Export CSV</ListItemText></MenuItem>} onClick={() => setAnchorElExport(null)} />
-              </Menu>
-            </Grid>
-          </Grid>
-
-          <Grid container spacing={5} className="w-full" size={12}>
-            <FormControl variant="filled" size="medium" className="surface mb-0 flex-1">
-              <InputLabel>Search</InputLabel>
-              <QuickFilter render={() => (
-                <QuickFilterControl render={({ ref, ...controlProps }, state) => (
-                  <FilledInput {...controlProps} inputRef={ref} endAdornment={
-                    <>
-                      <InputAdornment position="end" className={cn(state.value === "" && "hidden")}>
-                        <QuickFilterClear edge="end"><NiCross size="medium" className="text-text-disabled" /></QuickFilterClear>
-                      </InputAdornment>
-                      <InputAdornment position="end" className={cn(state.value !== "" && "hidden")}>
-                        <IconButton edge="end"><NiSearch size="medium" className="text-text-disabled" /></IconButton>
-                      </InputAdornment>
-                    </>
-                  } />
-                )} />
-              )} />
-            </FormControl>
-          </Grid>
-        </Grid>
+      <Toolbar className="min-h-auto border-none p-0!">
+        <FormControl variant="filled" size="medium" className="surface mb-0 flex-1">
+          <InputLabel>Search</InputLabel>
+          <QuickFilter render={() => (
+            <QuickFilterControl render={({ ref, ...controlProps }, state) => (
+              <FilledInput {...controlProps} inputRef={ref} endAdornment={
+                <>
+                  <InputAdornment position="end" className={cn(state.value === "" && "hidden")}>
+                    <QuickFilterClear edge="end"><NiCross size="medium" className="text-text-disabled" /></QuickFilterClear>
+                  </InputAdornment>
+                  <InputAdornment position="end" className={cn(state.value !== "" && "hidden")}>
+                    <IconButton edge="end"><NiSearch size="medium" className="text-text-disabled" /></IconButton>
+                  </InputAdornment>
+                </>
+              } />
+            )} />
+          )} />
+        </FormControl>
       </Toolbar>
     );
   }
 
   return (
     <>
+      {/* Header Section - Always Visible */}
+      <Grid container spacing={5} className="mb-4">
+        <Grid container spacing={2.5} className="w-full" size={12}>
+          <Grid size={{ xs: 12, md: "grow" }}>
+            <Typography variant="h1" component="h1" className="mb-0">
+              {niche?.name || "Loading..."}
+            </Typography>
+            <Breadcrumbs>
+              <Link color="inherit" to="/">Home</Link>
+              <Link color="inherit" to="/crm">CRM</Link>
+              <Typography variant="body2">{niche?.name}</Typography>
+            </Breadcrumbs>
+          </Grid>
+
+          <Grid size={{ xs: 12, md: "auto" }} className="flex flex-row items-start gap-2">
+            {/* View Toggle */}
+            <Box className="border-grey-200 inline-flex rounded-2xl border border-solid p-1.75 mr-2">
+              <ToggleButtonGroup value={viewMode} exclusive onChange={handleViewModeChange} size="small">
+                <ToggleButton value="table">
+                  <NiList size="small" />
+                </ToggleButton>
+                <ToggleButton value="map">
+                  <NiSigns size="small" />
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+
+            <Tooltip title="Scrape">
+              <Button className="icon-only surface-standard" size="medium" color="primary" variant="surface" onClick={handleScrapeOpen} disabled={enriching}>
+                <NiSearch size={"medium"} />
+              </Button>
+            </Tooltip>
+
+            <Tooltip title="Enrich Emails">
+              <Button className="icon-only surface-standard" size="medium" color="success" variant="surface" onClick={handleEnrichEmails} disabled={enriching || scraping}>
+                <NiEmail size={"medium"} />
+              </Button>
+            </Tooltip>
+
+            <Tooltip title="Reset N/A Emails">
+              <Button className="icon-only surface-standard" size="medium" color="warning" variant="surface" onClick={handleResetNAEmails} disabled={enriching || scraping || resetting || deleting || clearing}>
+                <NiArrowHistory size={"medium"} />
+              </Button>
+            </Tooltip>
+
+            <Tooltip title="Clear All Emails">
+              <Button className="icon-only surface-standard" size="medium" color="secondary" variant="surface" onClick={handleClearAllEmails} disabled={enriching || scraping || resetting || deleting || clearing}>
+                <NiCrossSquare size={"medium"} />
+              </Button>
+            </Tooltip>
+
+            <Tooltip title="Delete All Contacts">
+              <Button className="icon-only surface-standard" size="medium" color="error" variant="surface" onClick={handleDeleteAllContacts} disabled={enriching || scraping || deleting}>
+                <NiBinEmpty size={"medium"} />
+              </Button>
+            </Tooltip>
+
+            <Tooltip title="Export">
+              <Button className="icon-only surface-standard" size="medium" color="grey" variant="surface" startIcon={<NiArrowInDown size={"medium"} />} onClick={(e) => setAnchorElExport(e.currentTarget)} />
+            </Tooltip>
+
+            <Menu anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }} anchorEl={anchorElExport as Element} open={openExport} onClose={() => setAnchorElExport(null)} className="mt-1">
+              <MenuItem onClick={() => { window.print(); setAnchorElExport(null); }}><ListItemIcon><NiPrinter size="medium" /></ListItemIcon><ListItemText>Print</ListItemText></MenuItem>
+              <MenuItem onClick={() => { 
+                const csv = rows.map(r => `"${r.name}","${r.email || ''}","${r.phone || ''}","${r.address || ''}","${r.website || ''}"`).join('\n');
+                const blob = new Blob([`Name,Email,Phone,Address,Website\n${csv}`], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = 'contacts.csv'; a.click();
+                setAnchorElExport(null);
+              }}><ListItemIcon><NiDocumentFull size="medium" /></ListItemIcon><ListItemText>Export CSV</ListItemText></MenuItem>
+            </Menu>
+          </Grid>
+        </Grid>
+
+        {/* Search Bar */}
+        <Grid size={12}>
+          <FormControl variant="filled" size="medium" className="surface mb-0 w-full">
+            <InputLabel>Search</InputLabel>
+            <FilledInput 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              endAdornment={
+                <>
+                  <InputAdornment position="end" className={cn(searchQuery === "" && "hidden")}>
+                    <IconButton edge="end" onClick={() => setSearchQuery("")}><NiCross size="medium" className="text-text-disabled" /></IconButton>
+                  </InputAdornment>
+                  <InputAdornment position="end" className={cn(searchQuery !== "" && "hidden")}>
+                    <IconButton edge="end"><NiSearch size="medium" className="text-text-disabled" /></IconButton>
+                  </InputAdornment>
+                </>
+              }
+            />
+          </FormControl>
+        </Grid>
+      </Grid>
+
       <Dialog open={scrapeDialogOpen} onClose={handleScrapeClose} maxWidth="sm" fullWidth>
         <DialogTitle>{scraping ? "Scraping..." : `Scrape for ${niche?.name}`}</DialogTitle>
         <DialogContent>
