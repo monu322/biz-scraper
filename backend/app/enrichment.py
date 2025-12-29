@@ -232,10 +232,15 @@ class EnrichmentService:
                     homepage_emails = self.extract_emails_from_html(soup, website, domain)
                     direct_emails.extend(homepage_emails)
                     
-                    # Find potential contact pages
+                    # If email found on homepage, no need to check contact pages
+                    if direct_emails:
+                        print(f"  → Email found on homepage, skipping contact pages")
+                        return direct_emails
+                    
+                    # Find potential contact pages (only if no email found on homepage)
                     contact_urls = self.find_contact_page_urls(soup, base_url)
                     
-                    # 2. Fetch contact/about pages
+                    # 2. Fetch contact/about pages only if no email found yet
                     for url in contact_urls[:3]:  # Limit to 3 additional pages
                         print(f"  → Fetching contact page: {url}")
                         try:

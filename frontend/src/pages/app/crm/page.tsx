@@ -120,7 +120,7 @@ export default function Page() {
   const [scrapeDialogOpen, setScrapeDialogOpen] = useState(false);
   const [scrapeKeyword, setScrapeKeyword] = useState("");
   const [scrapeLocation, setScrapeLocation] = useState("");
-  const [scrapeLimit, setScrapeLimit] = useState<number>(20);
+  const [scrapeLimit, setScrapeLimit] = useState<string>("20");
   const [scraping, setScraping] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -335,18 +335,26 @@ export default function Page() {
     {
       field: "name",
       headerName: "Name",
-      width: 200,
+      width: 250,
       type: "string",
-      renderCell: (params: GridRenderCellParams<any, string>) => (
-        <Box className="flex h-full items-center gap-2">
-          <Avatar className="bg-primary/80" alt={params.value} src={params.row.avatar}>
-            {params.value?.substring(0, 1)}
-          </Avatar>
-          <Typography variant="body1" component="div">
-            {params.value}
-          </Typography>
-        </Box>
-      ),
+      renderCell: (params: GridRenderCellParams<any, string>) => {
+        const googleMapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(params.value || "")}`;
+        return (
+          <Box className="flex h-full items-center gap-2">
+            <Avatar className="bg-primary/80" alt={params.value} src={params.row.avatar}>
+              {params.value?.substring(0, 1)}
+            </Avatar>
+            <a
+              href={googleMapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              {params.value}
+            </a>
+          </Box>
+        );
+      },
     },
     { field: "avatar", headerName: "Avatar", width: 200, type: "string" },
     {
@@ -785,14 +793,15 @@ export default function Page() {
               fullWidth
               type="number"
               value={scrapeLimit}
-              onChange={(e) => {
-                const value = parseInt(e.target.value);
-                if (value >= 1 && value <= 50) {
-                  setScrapeLimit(value);
-                }
+              onChange={(e) => setScrapeLimit(e.target.value)}
+              onBlur={() => {
+                const value = parseInt(scrapeLimit) || 20;
+                if (value < 1) setScrapeLimit("1");
+                else if (value > 50) setScrapeLimit("50");
+                else setScrapeLimit(String(value));
               }}
               inputProps={{ min: 1, max: 50 }}
-              helperText="Maximum 50 records"
+              helperText="1-50 records"
               disabled={scraping}
             />
             {scraping && (
