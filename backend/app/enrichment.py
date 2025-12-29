@@ -125,16 +125,17 @@ class EnrichmentService:
     
     def extract_emails_from_html(self, soup: BeautifulSoup, page_url: str = "", domain: str = "") -> list[str]:
         """
-        Extract emails directly from HTML:
+        Extract emails directly from HTML using multiple methods:
         1. Decode Cloudflare protected emails
-        2. From mailto: links
-        3. Search for @domain pattern in raw HTML
-        4. General email regex on raw HTML
+        2. From mailto: links (BeautifulSoup)
+        3. mailto: regex on raw HTML (backup)
+        4. Search for @domain pattern in raw HTML
+        5. General email regex on raw HTML
         """
         emails = []
         
         try:
-            # Get raw HTML as string
+            # Get raw HTML as string (preserve original case for email extraction)
             raw_html = str(soup)
             
             # 1. CLOUDFLARE EMAIL PROTECTION - Decode data-cfemail attributes
@@ -157,19 +158,45 @@ class EnrichmentService:
                         emails.append(decoded_email)
                         print(f"  → Found Cloudflare protected email (regex): {decoded_email}")
             
-            # 2. Extract from mailto: links
+            # 2. Extract from mailto: links using BeautifulSoup
             for link in soup.find_all('a', href=True):
                 href = link.get('href', '')
-                if 'mailto:' in href.lower():
-                    # Extract email from mailto:email@example.com
-                    start = href.lower().find('mailto:') + 7
-                    email = href[start:].split('?')[0].strip()
-                    if email and '@' in email:
-                        if email.lower() not in emails:
-                            emails.append(email.lower())
-                            print(f"  → Found mailto email: {email}")
+                href_lower = href.lower()
+                if 'mailto:' in href_lower:
+                    # Extract email from mailto:email@example.com or mailto:email@example.com?subject=...
+                    mailto_idx = href_lower.find('mailto:')
+                    email_part = href[mailto_idx + 7:]  # Keep original case
+                    # Remove query params and fragment
+                    email = email_part.split('?')[0].split('#')[0].strip()
+                    # Clean up any whitespace or special chars
+                    email = email.strip().replace('%20', '').replace(' ', '')
+                    if email and '@' in email and '.' in email.split('@')[-1]:
+                        email_lower = email.lower()
+                        if email_lower not in emails:
+                            emails.append(email_lower)
+                            print(f"  → Found mailto email (BeautifulSoup): {email_lower}")
             
-            # 3. Search for @domain pattern specifically (most reliable)
+            # 3. BACKUP: Search for mailto: in raw HTML with regex (catches malformed HTML)
+            mailto_pattern = r'mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'
+            mailto_matches = re.findall(mailto_pattern, raw_html, re.IGNORECASE)
+            for email in mailto_matches:
+                email_lower = email.lower()
+                if email_lower not in emails:
+                    emails.append(email_lower)
+                    print(f"  → Found mailto email (regex): {email_lower}")
+            
+            # 4. Also check href attributes directly with regex (catches href="mailto:...")
+            href_mailto_pattern = r'href=["\']mailto:([^"\'?#]+)'
+            href_mailto_matches = re.findall(href_mailto_pattern, raw_html, re.IGNORECASE)
+            for email in href_mailto_matches:
+                email = email.strip().replace('%20', '').replace(' ', '')
+                if '@' in email and '.' in email.split('@')[-1]:
+                    email_lower = email.lower()
+                    if email_lower not in emails:
+                        emails.append(email_lower)
+                        print(f"  → Found mailto email (href regex): {email_lower}")
+            
+            # 5. Search for @domain pattern specifically (most reliable for business emails)
             if domain:
                 domain_pattern = rf'[a-zA-Z0-9._%+-]+@{re.escape(domain)}'
                 found_domain_emails = re.findall(domain_pattern, raw_html, re.IGNORECASE)
@@ -177,24 +204,49 @@ class EnrichmentService:
                     email_lower = email.lower()
                     if email_lower not in emails:
                         emails.append(email_lower)
-                        print(f"  → Found @{domain} email: {email}")
+                        print(f"  → Found @{domain} email: {email_lower}")
             
-            # 4. General email pattern search
-            email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+            # 6. General email pattern search in raw HTML
+            email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
             found_in_html = re.findall(email_pattern, raw_html, re.IGNORECASE)
             for email in found_in_html:
                 email_lower = email.lower()
                 if email_lower not in emails:
                     emails.append(email_lower)
-                    print(f"  → Found general email: {email}")
+                    print(f"  → Found general email: {email_lower}")
+            
+            # 7. Search in visible text content too (sometimes emails are in text not HTML attrs)
+            text_content = soup.get_text(separator=' ', strip=True)
+            text_emails = re.findall(email_pattern, text_content, re.IGNORECASE)
+            for email in text_emails:
+                email_lower = email.lower()
+                if email_lower not in emails:
+                    emails.append(email_lower)
+                    print(f"  → Found email in text: {email_lower}")
             
             # Filter out common false positives
-            filtered_emails = [e for e in emails if not any(
-                x in e.lower() for x in ['example.com', 'email.com', 'domain.com', 'yoursite.com', 'wixpress.com', 'sentry.io', '.png', '.jpg', '.gif']
-            )]
+            false_positive_patterns = [
+                'example.com', 'email.com', 'domain.com', 'yoursite.com', 
+                'wixpress.com', 'sentry.io', 'sentry-next.wixpress.com',
+                '.png', '.jpg', '.gif', '.svg', '.webp', '.ico',
+                'wordpress.com', 'squarespace.com', 'shopify.com',
+                '@2x', '@3x',  # Image resolution markers
+                'noreply', 'no-reply', 'donotreply',
+            ]
+            
+            filtered_emails = []
+            for email in emails:
+                email_lower = email.lower()
+                if not any(fp in email_lower for fp in false_positive_patterns):
+                    # Additional validation: must have valid TLD
+                    parts = email_lower.split('@')
+                    if len(parts) == 2 and '.' in parts[1]:
+                        tld = parts[1].split('.')[-1]
+                        if len(tld) >= 2 and tld.isalpha():
+                            filtered_emails.append(email_lower)
             
             if filtered_emails:
-                print(f"  → Emails found: {filtered_emails}")
+                print(f"  → Valid emails found: {filtered_emails}")
             
             return filtered_emails
             
