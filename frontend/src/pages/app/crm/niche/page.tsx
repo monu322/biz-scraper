@@ -196,6 +196,13 @@ export default function NicheDetailPage() {
   }, [fetchNiche, fetchContacts]);
 
   const handleScrapeOpen = () => {
+    // Prefill with niche name and first location
+    if (niche) {
+      setScrapeKeyword(niche.name);
+      if (niche.locations && niche.locations.length > 0) {
+        setScrapeLocation(niche.locations[0]);
+      }
+    }
     setScrapeDialogOpen(true);
   };
 
