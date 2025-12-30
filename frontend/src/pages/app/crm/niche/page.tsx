@@ -518,41 +518,25 @@ export default function NicheDetailPage() {
   // Search state for map view
   const [searchQuery, setSearchQuery] = useState("");
   
-  // Filter rows based on search query for map view
+  // Filter rows based on search query (for both table and map)
+  const filteredRows = useMemo(() => {
+    if (!searchQuery) return rows;
+    const query = searchQuery.toLowerCase();
+    return rows.filter(r => 
+      r.name.toLowerCase().includes(query) ||
+      r.email?.toLowerCase().includes(query)
+    );
+  }, [rows, searchQuery]);
+
+  // Filter map rows based on search query
   const filteredMapRows = useMemo(() => {
     if (!searchQuery) return mapRows;
     const query = searchQuery.toLowerCase();
     return mapRows.filter(r => 
       r.name.toLowerCase().includes(query) ||
-      r.address?.toLowerCase().includes(query) ||
-      r.email?.toLowerCase().includes(query) ||
-      r.phone?.toLowerCase().includes(query)
+      r.email?.toLowerCase().includes(query)
     );
   }, [mapRows, searchQuery]);
-
-  function CustomToolbar() {
-    return (
-      <Toolbar className="min-h-auto border-none p-0!">
-        <FormControl variant="filled" size="medium" className="surface mb-0 flex-1">
-          <InputLabel>Search</InputLabel>
-          <QuickFilter render={() => (
-            <QuickFilterControl render={({ ref, ...controlProps }, state) => (
-              <FilledInput {...controlProps} inputRef={ref} endAdornment={
-                <>
-                  <InputAdornment position="end" className={cn(state.value === "" && "hidden")}>
-                    <QuickFilterClear edge="end"><NiCross size="medium" className="text-text-disabled" /></QuickFilterClear>
-                  </InputAdornment>
-                  <InputAdornment position="end" className={cn(state.value !== "" && "hidden")}>
-                    <IconButton edge="end"><NiSearch size="medium" className="text-text-disabled" /></IconButton>
-                  </InputAdornment>
-                </>
-              } />
-            )} />
-          )} />
-        </FormControl>
-      </Toolbar>
-    );
-  }
 
   return (
     <>
@@ -788,7 +772,7 @@ export default function NicheDetailPage() {
                     setScrapeDialogOpen(true);
                   }} 
                 />
-                {mapRows.map((row) => (
+                {filteredMapRows.map((row) => (
                   <Marker 
                     key={row.id} 
                     position={[row.latitude!, row.longitude!]}
@@ -826,7 +810,7 @@ export default function NicheDetailPage() {
         ) : (
           <Grid size={12}>
             <DataGrid
-              rows={rows}
+              rows={filteredRows}
               columns={columns}
               initialState={{ columns: { columnVisibilityModel: { avatar: false } }, pagination: { paginationModel: { pageSize: 10 } } }}
               getRowSpacing={getRowSpacing}
@@ -861,12 +845,10 @@ export default function NicheDetailPage() {
                 quickFilterClearIcon: () => <NiCross size={"medium"} />,
                 baseButton: (props) => <Button {...props} variant="pastel" color="grey" />,
                 moreActionsIcon: () => <NiEllipsisVertical size={"medium"} />,
-                toolbar: CustomToolbar,
               }}
               rowSelectionModel={rowSelectionModel}
               onRowSelectionModelChange={(model) => setRowSelectionModel(model)}
               hideFooterSelectedRowCount
-              showToolbar
             />
           </Grid>
         )}
