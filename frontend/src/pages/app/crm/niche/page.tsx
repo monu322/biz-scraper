@@ -508,8 +508,8 @@ export default function NicheDetailPage() {
         return (
           <Button 
             size="tiny" 
-            color="warning" 
-            variant="pastel"
+            color="primary" 
+            variant="contained"
             onClick={(e) => {
               e.stopPropagation();
               openNoWebsiteDialog(params.row);

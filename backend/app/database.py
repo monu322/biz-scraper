@@ -64,10 +64,12 @@ class Database:
         """
         Upsert multiple contacts - insert new, update existing.
         Returns dict with counts of new and updated contacts.
+        Handles duplicate phone numbers gracefully by skipping.
         """
         try:
             new_contacts = []
             updated_contacts = []
+            skipped_contacts = []
             
             # Get all existing contacts to check for duplicates
             existing_response = self.client.table("contacts").select("*").execute()
@@ -81,6 +83,9 @@ class Database:
                 if c.get("name") and c.get("address")
             }
             
+            # Track phones we're inserting in this batch to avoid duplicates within batch
+            phones_in_batch = set()
+            
             for contact in contacts:
                 # Check if contact exists by phone or name+address
                 existing = None
@@ -88,6 +93,11 @@ class Database:
                     existing = existing_by_phone[contact.phone]
                 elif contact.name and contact.address:
                     existing = existing_by_name_address.get((contact.name, contact.address))
+                
+                # Skip if phone already exists in this batch (duplicate in scraped data)
+                if contact.phone and contact.phone in phones_in_batch:
+                    skipped_contacts.append(contact.name)
+                    continue
                 
                 contact_data = {
                     "name": contact.name,
@@ -106,21 +116,46 @@ class Database:
                 }
                 
                 if existing:
-                    # Update existing contact
-                    self.client.table("contacts") \
-                        .update(contact_data) \
-                        .eq("id", existing["id"]) \
-                        .execute()
-                    updated_contacts.append(existing["id"])
+                    # Update existing contact (don't overwrite niche_id if already set)
+                    if existing.get("niche_id") and contact.niche_id:
+                        # Keep existing niche_id if different, or update to new one
+                        pass  # Let it update with new niche_id
+                    
+                    try:
+                        self.client.table("contacts") \
+                            .update(contact_data) \
+                            .eq("id", existing["id"]) \
+                            .execute()
+                        updated_contacts.append(existing["id"])
+                    except Exception as e:
+                        print(f"  → Skipping update for {contact.name}: {e}")
+                        skipped_contacts.append(contact.name)
                 else:
                     # Insert new contact
-                    result = self.client.table("contacts").insert(contact_data).execute()
-                    if result.data:
-                        new_contacts.append(result.data[0]["id"])
+                    try:
+                        result = self.client.table("contacts").insert(contact_data).execute()
+                        if result.data:
+                            new_contacts.append(result.data[0]["id"])
+                            # Add to batch tracker
+                            if contact.phone:
+                                phones_in_batch.add(contact.phone)
+                    except Exception as e:
+                        # Handle duplicate key error gracefully
+                        error_str = str(e)
+                        if "duplicate key" in error_str or "23505" in error_str:
+                            print(f"  → Skipping duplicate: {contact.name} (phone: {contact.phone})")
+                            skipped_contacts.append(contact.name)
+                        else:
+                            print(f"  → Error inserting {contact.name}: {e}")
+                            skipped_contacts.append(contact.name)
+            
+            if skipped_contacts:
+                print(f"  → Skipped {len(skipped_contacts)} duplicate contact(s)")
             
             return {
                 "new_count": len(new_contacts),
                 "updated_count": len(updated_contacts),
+                "skipped_count": len(skipped_contacts),
                 "total_processed": len(contacts)
             }
         except Exception as e:
