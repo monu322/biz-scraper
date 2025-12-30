@@ -19,7 +19,7 @@ class EnrichmentService:
         Find URLs that likely contain contact information.
         Returns list of potential contact page URLs.
         """
-        contact_keywords = ['contact', 'about', 'reach', 'get-in-touch', 'connect']
+        contact_keywords = ['contact', 'about', 'reach', 'get-in-touch', 'connect', 'book', 'enquir', 'email']
         potential_urls = []
         
         try:
@@ -40,20 +40,82 @@ class EnrichmentService:
                     
                     potential_urls.append(full_url)
             
-            # Remove duplicates and limit to first 3 URLs
+            # Remove duplicates and limit to first 5 URLs
             seen = set()
             unique_urls = []
             for url in potential_urls:
                 if url not in seen:
                     seen.add(url)
                     unique_urls.append(url)
-                    if len(unique_urls) >= 3:
+                    if len(unique_urls) >= 5:
                         break
             
             return unique_urls
             
         except Exception as e:
             print(f"Error finding contact pages: {e}")
+            return []
+    
+    def find_all_navigation_links(self, soup: BeautifulSoup, base_url: str) -> list[str]:
+        """
+        Find ALL internal navigation links on the page.
+        Used as a fallback when contact page search fails.
+        Looks for links in nav, header, menu elements and main menu links.
+        """
+        nav_urls = []
+        base_domain = self.get_domain_from_url(base_url)
+        
+        try:
+            # Look in common navigation containers
+            nav_containers = soup.find_all(['nav', 'header'])
+            
+            # Also look for elements with common menu class names
+            menu_classes = ['menu', 'nav', 'navigation', 'main-menu', 'primary-menu', 'site-nav']
+            for cls in menu_classes:
+                nav_containers.extend(soup.find_all(class_=lambda x: x and cls in x.lower() if x else False))
+            
+            # If no nav containers found, just use all links
+            if not nav_containers:
+                nav_containers = [soup]
+            
+            seen = set()
+            for container in nav_containers:
+                for link in container.find_all('a', href=True):
+                    href = link.get('href', '')
+                    href_lower = href.lower()
+                    
+                    # Skip non-page links
+                    skip_patterns = ['#', 'javascript:', 'tel:', 'mailto:', '.pdf', '.jpg', '.png', 
+                                   'twitter.com', 'facebook.com', 'instagram.com', 'linkedin.com',
+                                   'youtube.com', 'tiktok.com']
+                    if any(skip in href_lower for skip in skip_patterns):
+                        continue
+                    
+                    # Make URL absolute
+                    if href.startswith('/'):
+                        full_url = base_url.rstrip('/') + href
+                    elif href.startswith('http'):
+                        # Only include if same domain
+                        link_domain = self.get_domain_from_url(href)
+                        if link_domain != base_domain:
+                            continue
+                        full_url = href
+                    elif href and not href.startswith(('#', 'javascript:')):
+                        full_url = base_url.rstrip('/') + '/' + href
+                    else:
+                        continue
+                    
+                    # Normalize and dedupe
+                    full_url = full_url.split('?')[0].split('#')[0].rstrip('/')
+                    if full_url not in seen and full_url != base_url.rstrip('/'):
+                        seen.add(full_url)
+                        nav_urls.append(full_url)
+            
+            print(f"  → Found {len(nav_urls)} navigation links to check")
+            return nav_urls[:10]  # Limit to 10 links
+            
+        except Exception as e:
+            print(f"Error finding navigation links: {e}")
             return []
     
     async def fetch_website_content(self, website: str) -> Optional[str]:
@@ -312,7 +374,7 @@ class EnrichmentService:
                     contact_urls = self.find_contact_page_urls(soup, base_url)
                     
                     # 2. Fetch contact/about pages - always check if no domain match yet
-                    for url in contact_urls[:3]:  # Limit to 3 additional pages
+                    for url in contact_urls[:5]:  # Limit to 5 contact pages
                         print(f"  → Fetching contact page: {url}")
                         try:
                             contact_response = await client.get(url, timeout=10.0)
@@ -335,6 +397,39 @@ class EnrichmentService:
                         except Exception as e:
                             print(f"  → Could not fetch {url}: {e}")
                             continue
+                    
+                    # 3. FALLBACK: If still no email found, check ALL navigation links
+                    if not all_emails and not domain_matched_emails:
+                        print(f"  → No email found yet, checking all navigation links...")
+                        nav_urls = self.find_all_navigation_links(soup, base_url)
+                        
+                        # Filter out URLs we've already checked
+                        checked_urls = set([website] + contact_urls)
+                        nav_urls = [url for url in nav_urls if url not in checked_urls]
+                        
+                        for url in nav_urls[:8]:  # Check up to 8 more pages
+                            print(f"  → Checking nav link: {url}")
+                            try:
+                                nav_response = await client.get(url, timeout=8.0)
+                                nav_response.raise_for_status()
+                                nav_soup = BeautifulSoup(nav_response.text, 'html.parser')
+                                
+                                # Extract emails from this page
+                                page_emails = self.extract_emails_from_html(nav_soup, url, domain)
+                                for email in page_emails:
+                                    if email not in all_emails:
+                                        all_emails.append(email)
+                                    if self.email_matches_domain(email, domain) and email not in domain_matched_emails:
+                                        domain_matched_emails.append(email)
+                                
+                                # If we found a domain match, we can stop
+                                if domain_matched_emails:
+                                    print(f"  → Domain-matched email found on {url}: {domain_matched_emails[0]}")
+                                    return domain_matched_emails
+                                    
+                            except Exception as e:
+                                print(f"  → Could not fetch nav link {url}: {e}")
+                                continue
                     
                 except Exception as e:
                     print(f"  → Error fetching homepage: {e}")

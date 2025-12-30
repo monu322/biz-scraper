@@ -121,14 +121,13 @@ export default function LeftMenu() {
       showLeftSecondary();
       setActiveItem(item);
     } else {
-      if (isPathMatch(pathname, item.href || "")) {
-        // Primary item is link without children or a content. The route is the same so don't do anything.
-        hideLeftSecondary();
-        resetLeftMenu();
-        setActiveItem(item);
-      } else {
-        // Primary item is link without children or a content. Navigate to the route.
-        setOpenedAccordions((prev) => prev.filter((a) => a.indent !== 0));
+      // Primary item is link without children or a content. Always navigate to the route.
+      hideLeftSecondary();
+      resetLeftMenu();
+      setActiveItem(item);
+      setOpenedAccordions((prev) => prev.filter((a) => a.indent !== 0));
+      // Navigate even if on a child route (e.g., /crm/niche/1 -> /crm)
+      if (pathname !== item.href) {
         navigate(item.href ?? "");
       }
     }

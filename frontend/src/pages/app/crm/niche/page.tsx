@@ -140,10 +140,10 @@ type ViewMode = "table" | "map";
 dayjs.extend(duration);
 dayjs.extend(relativeTime);
 
-// Custom CSS for magnifying glass cursor on map
+// Custom CSS for crosshair cursor on map (for click-to-scrape)
 const mapCursorStyle = `
   .leaflet-container.map-scrape-mode {
-    cursor: zoom-in !important;
+    cursor: crosshair !important;
   }
   .leaflet-container.map-scrape-mode .leaflet-marker-icon,
   .leaflet-container.map-scrape-mode .leaflet-marker-shadow {
