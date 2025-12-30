@@ -335,6 +335,41 @@ class Database:
         except Exception as e:
             print(f"Error clearing emails by niche: {e}")
             raise
+    
+    async def add_contact_status(self, contact_id: int, new_status: str) -> Optional[dict]:
+        """Add a status to a contact (appends to existing status, comma-separated)."""
+        try:
+            # Get current contact
+            response = self.client.table("contacts") \
+                .select("status") \
+                .eq("id", contact_id) \
+                .execute()
+            
+            if not response.data:
+                return None
+            
+            current_status = response.data[0].get("status") or ""
+            
+            # Parse existing statuses
+            existing_statuses = [s.strip() for s in current_status.split(",") if s.strip()]
+            
+            # Add new status if not already present
+            if new_status not in existing_statuses:
+                existing_statuses.append(new_status)
+            
+            # Join back to comma-separated string
+            updated_status = ", ".join(existing_statuses)
+            
+            # Update contact
+            update_response = self.client.table("contacts") \
+                .update({"status": updated_status}) \
+                .eq("id", contact_id) \
+                .execute()
+            
+            return update_response.data[0] if update_response.data else None
+        except Exception as e:
+            print(f"Error adding contact status: {e}")
+            raise
 
 
 # Singleton instance

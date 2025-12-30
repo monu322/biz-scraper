@@ -202,6 +202,11 @@ export default function NicheDetailPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
+  
+  // No website action dialog state
+  const [noWebsiteDialogOpen, setNoWebsiteDialogOpen] = useState(false);
+  const [selectedContactForAction, setSelectedContactForAction] = useState<Row | null>(null);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   // Handle view mode change
   const handleViewModeChange = (_event: MouseEvent<HTMLElement>, newMode: ViewMode | null) => {
@@ -424,6 +429,38 @@ export default function NicheDetailPage() {
     return { top: params.isFirstVisible ? 0 : 5, bottom: 5 };
   }, []);
 
+  // Handle no website action (call or SMS)
+  const handleNoWebsiteAction = async (action: "call" | "sms") => {
+    if (!selectedContactForAction) return;
+    
+    setUpdatingStatus(true);
+    try {
+      const newStatus = action === "call" ? "Website call made" : "Website SMS sent";
+      const response = await fetch(`http://localhost:8000/api/contacts/${selectedContactForAction.id}/add-status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) throw new Error("Failed to update status");
+
+      await fetchContacts();
+      setNoWebsiteDialogOpen(false);
+      setSelectedContactForAction(null);
+    } catch (error) {
+      console.error("Error updating status:", error);
+      alert("Failed to update contact status.");
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
+  // Open no website dialog
+  const openNoWebsiteDialog = (row: Row) => {
+    setSelectedContactForAction(row);
+    setNoWebsiteDialogOpen(true);
+  };
+
   const columns: GridColDef<(typeof rows)[number]>[] = [
     {
       field: "id",
@@ -467,7 +504,20 @@ export default function NicheDetailPage() {
             </a>
           );
         }
-        return null;
+        // Show "No website" button when no website
+        return (
+          <Button 
+            size="tiny" 
+            color="warning" 
+            variant="pastel"
+            onClick={(e) => {
+              e.stopPropagation();
+              openNoWebsiteDialog(params.row);
+            }}
+          >
+            No website
+          </Button>
+        );
       },
     },
     {
@@ -492,21 +542,37 @@ export default function NicheDetailPage() {
       headerName: "Status",
       align: "left",
       headerAlign: "left",
-      minWidth: 140,
+      minWidth: 200,
       flex: 1,
-      type: "singleSelect",
-      valueOptions: ["Active", "Inactive", "Prospect", "Lead"],
+      type: "string",
       renderCell: (params: GridRenderCellParams<any, string>) => {
-        const value = params.value;
-        if (value === "Active") {
-          return <Button className="pointer-events-none self-center" size="tiny" color="success" variant="pastel" startIcon={<NiCheckSquare size={"tiny"} />}>{value}</Button>;
-        } else if (value === "Prospect") {
-          return <Button className="pointer-events-none self-center" size="tiny" color="warning" variant="pastel" startIcon={<NiClock size={"tiny"} />}>{value}</Button>;
-        } else if (value === "Lead") {
-          return <Button className="pointer-events-none self-center" size="tiny" color="info" variant="pastel" startIcon={<NiMinusSquare size={"tiny"} />}>{value}</Button>;
-        } else {
-          return <Button className="pointer-events-none self-center" size="tiny" color="grey" variant="pastel" startIcon={<NiExclamationSquare size={"tiny"} />}>{value}</Button>;
+        const value = params.value || "";
+        // Split by comma to support multiple statuses
+        const statuses = value.split(",").map(s => s.trim()).filter(s => s);
+        
+        if (statuses.length === 0) {
+          return <Button className="pointer-events-none self-center" size="tiny" color="grey" variant="pastel" startIcon={<NiExclamationSquare size={"tiny"} />}>Unknown</Button>;
         }
+
+        return (
+          <Box className="flex h-full items-center gap-1 flex-wrap">
+            {statuses.map((status, idx) => {
+              if (status === "Active") {
+                return <Button key={idx} className="pointer-events-none" size="tiny" color="success" variant="pastel" startIcon={<NiCheckSquare size={"tiny"} />}>{status}</Button>;
+              } else if (status === "Prospect") {
+                return <Button key={idx} className="pointer-events-none" size="tiny" color="warning" variant="pastel" startIcon={<NiClock size={"tiny"} />}>{status}</Button>;
+              } else if (status === "Lead") {
+                return <Button key={idx} className="pointer-events-none" size="tiny" color="info" variant="pastel" startIcon={<NiMinusSquare size={"tiny"} />}>{status}</Button>;
+              } else if (status === "Website call made") {
+                return <Button key={idx} className="pointer-events-none" size="tiny" color="primary" variant="pastel">📞 Called</Button>;
+              } else if (status === "Website SMS sent") {
+                return <Button key={idx} className="pointer-events-none" size="tiny" color="secondary" variant="pastel">💬 SMS</Button>;
+              } else {
+                return <Button key={idx} className="pointer-events-none" size="tiny" color="grey" variant="pastel">{status}</Button>;
+              }
+            })}
+          </Box>
+        );
       },
     },
   ];
@@ -635,6 +701,55 @@ export default function NicheDetailPage() {
           </FormControl>
         </Grid>
       </Grid>
+
+      {/* No Website Action Dialog */}
+      <Dialog open={noWebsiteDialogOpen} onClose={() => { setNoWebsiteDialogOpen(false); setSelectedContactForAction(null); }} maxWidth="xs" fullWidth>
+        <DialogTitle>Contact Without Website</DialogTitle>
+        <DialogContent>
+          <Box className="flex flex-col gap-3 pt-2">
+            <Typography variant="body2" color="text.secondary">
+              <strong>{selectedContactForAction?.name}</strong> doesn't have a website. What action would you like to take?
+            </Typography>
+            {selectedContactForAction?.phone && (
+              <Typography variant="body2">
+                📞 Phone: <strong>{selectedContactForAction.phone}</strong>
+              </Typography>
+            )}
+            <Box className="flex flex-col gap-2 mt-2">
+              <Button 
+                variant="contained" 
+                color="primary" 
+                fullWidth
+                disabled={updatingStatus || !selectedContactForAction?.phone}
+                onClick={() => handleNoWebsiteAction("call")}
+                startIcon={<span>📞</span>}
+              >
+                {updatingStatus ? "Updating..." : "Make a Call"}
+              </Button>
+              <Button 
+                variant="contained" 
+                color="secondary" 
+                fullWidth
+                disabled={updatingStatus || !selectedContactForAction?.phone}
+                onClick={() => handleNoWebsiteAction("sms")}
+                startIcon={<span>💬</span>}
+              >
+                {updatingStatus ? "Updating..." : "Send an SMS"}
+              </Button>
+            </Box>
+            {!selectedContactForAction?.phone && (
+              <Typography variant="caption" color="error">
+                No phone number available for this contact.
+              </Typography>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setNoWebsiteDialogOpen(false); setSelectedContactForAction(null); }} color="grey" variant="text" disabled={updatingStatus}>
+            Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={scrapeDialogOpen} onClose={handleScrapeClose} maxWidth="sm" fullWidth>
         <DialogTitle>{scraping ? "Scraping..." : `Scrape for ${niche?.name}`}</DialogTitle>

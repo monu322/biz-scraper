@@ -414,6 +414,29 @@ async def scrape_niche_contacts(niche_id: int, request: ScrapeRequest):
         )
 
 
+from pydantic import BaseModel
+
+class AddStatusRequest(BaseModel):
+    status: str
+
+@app.post("/api/contacts/{contact_id}/add-status")
+async def add_contact_status(contact_id: int, request: AddStatusRequest):
+    """Add a status to a contact (appends to existing, comma-separated)."""
+    try:
+        result = await db.add_contact_status(contact_id, request.status)
+        if not result:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        return {"message": f"Status '{request.status}' added successfully", "status": result.get("status")}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in add_contact_status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An error occurred while updating status: {str(e)}"
+        )
+
+
 @app.post("/api/niches/{niche_id}/enrich-emails")
 async def enrich_niche_emails(niche_id: int):
     """Enrich emails for contacts in a specific niche."""
