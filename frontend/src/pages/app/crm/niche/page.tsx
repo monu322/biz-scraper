@@ -561,7 +561,7 @@ export default function NicheDetailPage() {
     }
   };
 
-  // Extract area name from address
+  // Extract area name from address (removes postcodes)
   const getAreaFromAddress = (address: string | null): string => {
     if (!address) return "your area";
     // Try to extract city/area from address - usually after street number/name
@@ -569,14 +569,26 @@ export default function NicheDetailPage() {
     // Usually the city is the 2nd or 3rd part of UK addresses
     if (parts.length >= 2) {
       // Try to find a meaningful location (not a postcode)
-      for (let i = 1; i < Math.min(parts.length, 3); i++) {
+      for (let i = 1; i < Math.min(parts.length, 4); i++) {
         const part = parts[i];
-        // Skip if it looks like a postcode (contains numbers and letters mixed)
-        if (part && !/^[A-Z]{1,2}\d/.test(part.toUpperCase())) {
+        // Skip if it looks like a UK postcode (e.g., B8 2LL, SW1A 1AA, M1 1AA)
+        // UK postcodes: 1-2 letters, 1-2 digits, optional space, digit, 2 letters
+        const postcodeRegex = /^[A-Z]{1,2}\d{1,2}\s*\d?[A-Z]{0,2}$/i;
+        if (part && !postcodeRegex.test(part)) {
+          // Also check it's not just numbers or very short
+          if (part.length > 2 && !/^\d+$/.test(part)) {
+            return part;
+          }
+        }
+      }
+      // Fallback: return first non-postcode part
+      for (const part of parts) {
+        const postcodeRegex = /^[A-Z]{1,2}\d{1,2}\s*\d?[A-Z]{0,2}$/i;
+        if (part && !postcodeRegex.test(part) && part.length > 3 && !/^\d/.test(part)) {
           return part;
         }
       }
-      return parts[1] || "your area";
+      return "your area";
     }
     return address.split(",")[0] || "your area";
   };
@@ -894,7 +906,8 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                     variant="outlined"
                     fullWidth
                     multiline
-                    rows={3}
+                    minRows={4}
+                    maxRows={10}
                     value={smsMessage}
                     onChange={(e) => setSmsMessage(e.target.value)}
                     placeholder="Hi! I noticed your business doesn't have a website. I can help you create a professional website to attract more customers. Would you like to learn more?"
