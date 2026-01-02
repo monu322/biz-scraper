@@ -937,30 +937,33 @@ export default function NicheDetailPage() {
               pageSizeOptions={[10]}
               className="full-page border-none"
               pagination
+              showToolbar
               slotProps={{ panel: { className: "mt-1!" }, main: { className: "min-h-[600px]!" } }}
               slots={{
-                toolbar: () => (
-                  <Toolbar className="mb-4">
-                    <Box className="flex items-center gap-2">
-                      <ColumnsPanelTrigger render={(props) => (
+                toolbar: function CustomToolbar() {
+                  return (
+                    <Toolbar className="mb-4">
+                      <Box className="flex items-center gap-2">
                         <Tooltip title="Columns">
-                          <Button {...props} className="icon-only surface-standard" size="medium" color="grey" variant="surface">
-                            <NiCols size={"medium"} />
-                          </Button>
+                          <ColumnsPanelTrigger render={(props) => (
+                            <Button {...props} className="icon-only surface-standard flex-none" size="medium" color="grey" variant="surface">
+                              <NiCols size={"medium"} />
+                            </Button>
+                          )} />
                         </Tooltip>
-                      )} />
-                      <FilterPanelTrigger render={(props, state) => (
                         <Tooltip title="Filters">
-                          <Button {...props} className="icon-only surface-standard" size="medium" color="grey" variant="surface">
-                            <Badge badgeContent={state.filterCount} color="primary" variant="dot">
-                              <NiFilter size={"medium"} />
-                            </Badge>
-                          </Button>
+                          <FilterPanelTrigger render={(props, state) => (
+                            <Button {...props} className="icon-only surface-standard flex-none" size="medium" color="grey" variant="surface">
+                              <Badge badgeContent={state.filterCount} color="primary" variant="dot">
+                                <NiFilter size={"medium"} />
+                              </Badge>
+                            </Button>
+                          )} />
                         </Tooltip>
-                      )} />
-                    </Box>
-                  </Toolbar>
-                ),
+                      </Box>
+                    </Toolbar>
+                  );
+                },
                 basePagination: DataGridPaginationFullPage,
                 columnSortedDescendingIcon: () => <NiArrowDown size={"small"} />,
                 columnSortedAscendingIcon: () => <NiArrowUp size={"small"} />,
