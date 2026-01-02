@@ -159,6 +159,7 @@ type Row = {
   products: string[] | null;
   priceRange: string | null;
   googleMapsUrl: string | null;
+  placeId: string | null;
   category: string | null;
   reviewsCount: number | null;
   reviews: Review[] | null;
@@ -360,6 +361,7 @@ export default function NicheDetailPage() {
         products: contact.products,
         priceRange: contact.price_range,
         googleMapsUrl: contact.google_maps_url,
+        placeId: contact.place_id,
         category: contact.category,
         reviewsCount: contact.reviews_count,
         reviews: contact.reviews,
@@ -629,7 +631,18 @@ Book here: https://calendly.com/john-neurosphere/30min`;
       width: 250,
       type: "string",
       renderCell: (params: GridRenderCellParams<any, string>) => {
-        const googleMapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(params.value || "")}`;
+        // Use the actual Google Maps URL if available, otherwise fallback to search
+        const row = params.row;
+        let googleMapsUrl: string;
+        if (row.googleMapsUrl) {
+          googleMapsUrl = row.googleMapsUrl;
+        } else if (row.placeId) {
+          googleMapsUrl = `https://www.google.com/maps/place/?q=place_id:${row.placeId}`;
+        } else if (row.latitude && row.longitude) {
+          googleMapsUrl = `https://www.google.com/maps?q=${row.latitude},${row.longitude}`;
+        } else {
+          googleMapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(params.value || "")}`;
+        }
         return (
           <Box className="flex h-full items-center gap-2">
             <Avatar className="bg-primary/80" alt={params.value} src={params.row.avatar}>

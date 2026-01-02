@@ -15,6 +15,9 @@ class WhatsAppService:
         self.client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
         self.from_number = settings.twilio_whatsapp_number  # WhatsApp number
         self.sandbox_number = SANDBOX_NUMBER  # Sandbox override
+        print(f"  📱 WhatsApp Service initialized:")
+        print(f"     FROM number: {self.from_number}")
+        print(f"     SANDBOX TO: {self.sandbox_number}")
     
     async def send_whatsapp(self, to_number: str, message: str) -> dict:
         """
