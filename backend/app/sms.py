@@ -2,6 +2,11 @@ from twilio.rest import Client
 from app.config import get_settings
 
 
+# SANDBOX MODE: Override recipient number for testing
+# Set to None to send to actual business numbers
+SANDBOX_NUMBER = "+447529080583"  # Your test number
+
+
 class WhatsAppService:
     """Service for sending WhatsApp messages using Twilio."""
     
@@ -9,6 +14,7 @@ class WhatsAppService:
         settings = get_settings()
         self.client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
         self.from_number = settings.twilio_whatsapp_number  # WhatsApp number
+        self.sandbox_number = SANDBOX_NUMBER  # Sandbox override
     
     async def send_whatsapp(self, to_number: str, message: str) -> dict:
         """
@@ -23,17 +29,24 @@ class WhatsAppService:
         """
         try:
             # Clean up phone number - ensure E.164 format
-            formatted_number = self._format_phone_number(to_number)
+            original_number = self._format_phone_number(to_number)
             
-            if not formatted_number:
+            if not original_number:
                 return {
                     "success": False,
                     "message": "Invalid phone number format",
                     "sid": None
                 }
             
+            # SANDBOX MODE: Override recipient for testing
+            if self.sandbox_number:
+                actual_recipient = self.sandbox_number
+                print(f"  🧪 SANDBOX MODE: Sending to {actual_recipient} instead of {original_number}")
+            else:
+                actual_recipient = original_number
+            
             # Format for WhatsApp - prepend 'whatsapp:' to both numbers
-            whatsapp_to = f"whatsapp:{formatted_number}"
+            whatsapp_to = f"whatsapp:{actual_recipient}"
             whatsapp_from = f"whatsapp:{self.from_number}"
             
             # Send the WhatsApp message
@@ -45,7 +58,7 @@ class WhatsAppService:
             
             return {
                 "success": True,
-                "message": f"WhatsApp message sent successfully to {formatted_number}",
+                "message": f"WhatsApp message sent successfully to {actual_recipient} (original: {original_number})",
                 "sid": message_response.sid
             }
             
