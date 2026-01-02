@@ -580,6 +580,118 @@ class EnrichmentService:
         except Exception as e:
             print(f"Error in enrich_contacts_by_niche: {e}")
             raise
+    
+    async def enrich_contacts_by_niche_streaming(self, niche_id: int):
+        """
+        Enrich contacts for a specific niche with streaming progress updates.
+        Yields progress updates as JSON strings for SSE.
+        """
+        try:
+            # Get contacts for this niche
+            contacts = await db.get_contacts_by_niche(niche_id, limit=1000)
+            total = len(contacts)
+            
+            enriched_count = 0
+            skipped_count = 0
+            failed_count = 0
+            processed = 0
+            
+            # Initial progress
+            yield {
+                "type": "start",
+                "total": total,
+                "processed": 0,
+                "current": None,
+                "message": f"Starting enrichment for {total} contacts..."
+            }
+            
+            for contact in contacts:
+                processed += 1
+                
+                # Skip if already has a real email (not status messages)
+                email = contact.get("email")
+                if email and email not in ["N/A", "no email found", "No website", "website error"]:
+                    skipped_count += 1
+                    yield {
+                        "type": "progress",
+                        "total": total,
+                        "processed": processed,
+                        "current": contact["name"],
+                        "result": "skipped",
+                        "message": f"Skipped (already has email)"
+                    }
+                    continue
+                
+                # If no website, mark as "No website"
+                if not contact.get("website"):
+                    await db.update_contact_email(contact["id"], "No website")
+                    enriched_count += 1
+                    yield {
+                        "type": "progress",
+                        "total": total,
+                        "processed": processed,
+                        "current": contact["name"],
+                        "result": "no_website",
+                        "message": "No website"
+                    }
+                    continue
+                
+                # Progress update: starting to enrich
+                yield {
+                    "type": "progress",
+                    "total": total,
+                    "processed": processed,
+                    "current": contact["name"],
+                    "result": "processing",
+                    "message": f"Checking {contact['website']}..."
+                }
+                
+                # Try to find email
+                found_email = await self.extract_email_from_website(
+                    contact["website"],
+                    contact["name"]
+                )
+                
+                if found_email:
+                    await db.update_contact_email(contact["id"], found_email)
+                    enriched_count += 1
+                    yield {
+                        "type": "progress",
+                        "total": total,
+                        "processed": processed,
+                        "current": contact["name"],
+                        "result": "found",
+                        "email": found_email,
+                        "message": f"Found: {found_email}"
+                    }
+                else:
+                    failed_count += 1
+                    yield {
+                        "type": "progress",
+                        "total": total,
+                        "processed": processed,
+                        "current": contact["name"],
+                        "result": "not_found",
+                        "message": "No email found"
+                    }
+            
+            # Final summary
+            yield {
+                "type": "complete",
+                "total": total,
+                "processed": total,
+                "enriched_count": enriched_count,
+                "skipped_count": skipped_count,
+                "failed_count": failed_count,
+                "message": f"Complete! Found {enriched_count} emails."
+            }
+            
+        except Exception as e:
+            print(f"Error in enrich_contacts_by_niche_streaming: {e}")
+            yield {
+                "type": "error",
+                "message": str(e)
+            }
 
 
 # Singleton instance

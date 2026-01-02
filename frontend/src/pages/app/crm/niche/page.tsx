@@ -244,6 +244,18 @@ export default function NicheDetailPage() {
   const [smsMessage, setSmsMessage] = useState("");
   const [sendingSms, setSendingSms] = useState(false);
   
+  // Enrichment progress state
+  const [enrichmentDialogOpen, setEnrichmentDialogOpen] = useState(false);
+  const [enrichmentProgress, setEnrichmentProgress] = useState<{
+    total: number;
+    processed: number;
+    current: string | null;
+    message: string;
+    type: string;
+    enriched_count?: number;
+    skipped_count?: number;
+  } | null>(null);
+  
   // Handle sending WhatsApp via Twilio
   const handleSendWhatsApp = async () => {
     if (!selectedContactForAction || !smsMessage.trim()) return;
@@ -417,22 +429,35 @@ export default function NicheDetailPage() {
     if (!confirm("This will find missing emails from business websites. Continue?")) return;
     
     setEnriching(true);
+    setEnrichmentDialogOpen(true);
+    setEnrichmentProgress({ total: 0, processed: 0, current: null, message: "Starting...", type: "start" });
+    
     try {
-      const response = await fetch(`http://localhost:8000/api/niches/${nicheId}/enrich-emails`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      if (!response.ok) throw new Error("Failed to enrich emails");
-
-      const data = await response.json();
-      await fetchContacts();
-      alert(`Enriched ${data.enriched_count} contacts with emails`);
+      // Use SSE endpoint for real-time progress
+      const eventSource = new EventSource(`http://localhost:8000/api/niches/${nicheId}/enrich-emails/stream`);
+      
+      eventSource.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+        setEnrichmentProgress(data);
+        
+        // If complete or error, close the connection
+        if (data.type === "complete" || data.type === "error") {
+          eventSource.close();
+          setEnriching(false);
+          await fetchContacts();
+        }
+      };
+      
+      eventSource.onerror = () => {
+        eventSource.close();
+        setEnriching(false);
+        setEnrichmentProgress(prev => prev ? { ...prev, type: "error", message: "Connection lost" } : null);
+      };
+      
     } catch (error) {
       console.error("Enrichment error:", error);
-      alert("Failed to enrich emails.");
-    } finally {
       setEnriching(false);
+      setEnrichmentProgress(prev => prev ? { ...prev, type: "error", message: String(error) } : null);
     }
   };
 
@@ -1049,6 +1074,88 @@ export default function NicheDetailPage() {
         <DialogActions>
           <Button onClick={() => { setNoWebsiteDialogOpen(false); setSelectedContactForAction(null); setSmsMessage(""); }} color="grey" variant="text" disabled={updatingStatus || sendingSms}>
             Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Enrichment Progress Dialog */}
+      <Dialog open={enrichmentDialogOpen} onClose={() => !enriching && setEnrichmentDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box className="flex items-center gap-2">
+            <span className="text-2xl">✉️</span>
+            <span>Email Enrichment</span>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box className="flex flex-col gap-4 pt-2">
+            {enrichmentProgress && (
+              <>
+                {/* Progress Bar */}
+                <Box>
+                  <Box className="mb-2 flex items-center justify-between">
+                    <Typography variant="body2" className="text-text-secondary">
+                      {enrichmentProgress.type === "complete" ? "Complete!" : enrichmentProgress.type === "error" ? "Error" : "Processing..."}
+                    </Typography>
+                    <Typography variant="body2" className="font-medium">
+                      {enrichmentProgress.processed} / {enrichmentProgress.total}
+                    </Typography>
+                  </Box>
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={enrichmentProgress.total > 0 ? (enrichmentProgress.processed / enrichmentProgress.total) * 100 : 0}
+                    color={enrichmentProgress.type === "complete" ? "success" : enrichmentProgress.type === "error" ? "error" : "primary"}
+                  />
+                </Box>
+
+                {/* Current Contact */}
+                {enrichmentProgress.current && enrichmentProgress.type !== "complete" && (
+                  <Box className="rounded-lg bg-grey-50 p-3">
+                    <Typography variant="caption" className="text-text-secondary">Currently processing:</Typography>
+                    <Typography variant="body1" className="font-medium">{enrichmentProgress.current}</Typography>
+                    <Typography variant="body2" className="text-text-secondary mt-1">{enrichmentProgress.message}</Typography>
+                  </Box>
+                )}
+
+                {/* Completion Summary */}
+                {enrichmentProgress.type === "complete" && (
+                  <Box className="rounded-lg bg-green-50 border border-green-200 p-4">
+                    <Typography variant="subtitle1" className="font-bold text-green-800 mb-2">✅ Enrichment Complete!</Typography>
+                    <Box className="flex flex-wrap gap-4">
+                      <Box>
+                        <Typography variant="caption" className="text-green-700">Emails Found</Typography>
+                        <Typography variant="h6" className="text-green-800 font-bold">{enrichmentProgress.enriched_count || 0}</Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" className="text-grey-600">Skipped</Typography>
+                        <Typography variant="h6" className="text-grey-700">{enrichmentProgress.skipped_count || 0}</Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" className="text-grey-600">Total</Typography>
+                        <Typography variant="h6" className="text-grey-700">{enrichmentProgress.total}</Typography>
+                      </Box>
+                    </Box>
+                  </Box>
+                )}
+
+                {/* Error Message */}
+                {enrichmentProgress.type === "error" && (
+                  <Box className="rounded-lg bg-red-50 border border-red-200 p-4">
+                    <Typography variant="subtitle1" className="font-bold text-red-800 mb-1">❌ Error</Typography>
+                    <Typography variant="body2" className="text-red-700">{enrichmentProgress.message}</Typography>
+                  </Box>
+                )}
+              </>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setEnrichmentDialogOpen(false)} 
+            color="grey" 
+            variant="text" 
+            disabled={enriching}
+          >
+            {enriching ? "Processing..." : "Close"}
           </Button>
         </DialogActions>
       </Dialog>

@@ -37,7 +37,7 @@ class ScraperService:
                 "exportPlaceUrls": False,
                 "includeWebResults": False,
                 "scrapeReviewsPersonalData": True,  # Get reviewer info
-                "maxReviews": 50,  # Get first 50 reviews per business
+                "maxReviews": 20,  # Get first 20 reviews per business
                 "reviewsSort": "mostRelevant",  # Sort by most relevant
             }
             
@@ -148,14 +148,14 @@ class ScraperService:
         return None
     
     def _extract_reviews(self, item: dict) -> list | None:
-        """Extract reviews from the Apify result (first 50)."""
+        """Extract reviews from the Apify result (first 20)."""
         raw_reviews = item.get("reviews") or item.get("reviewsData") or []
         
         if not isinstance(raw_reviews, list) or len(raw_reviews) == 0:
             return None
         
-        # Limit to first 50 reviews
-        raw_reviews = raw_reviews[:50]
+        # Limit to first 20 reviews
+        raw_reviews = raw_reviews[:20]
         
         reviews = []
         for review in raw_reviews:

@@ -1,5 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+import json
+import asyncio
 from app.config import get_settings
 from app.models import ScrapeRequest, ScrapeResponse, ContactResponse, NicheCreate, NicheResponse, NicheUpdate, SMSRequest, SMSResponse
 from app.database import db
@@ -465,6 +468,39 @@ async def enrich_niche_emails(niche_id: int):
             status_code=500,
             detail=f"An error occurred while enriching emails: {str(e)}"
         )
+
+
+@app.get("/api/niches/{niche_id}/enrich-emails/stream")
+async def enrich_niche_emails_stream(niche_id: int):
+    """
+    Stream enrichment progress using Server-Sent Events (SSE).
+    Returns real-time progress updates as JSON events.
+    """
+    # Verify niche exists first
+    niche = await db.get_niche_by_id(niche_id)
+    if not niche:
+        raise HTTPException(status_code=404, detail="Niche not found")
+    
+    async def event_generator():
+        try:
+            async for progress in enrichment_service.enrich_contacts_by_niche_streaming(niche_id):
+                # Format as SSE event
+                yield f"data: {json.dumps(progress)}\n\n"
+                # Small delay to prevent overwhelming the client
+                await asyncio.sleep(0.1)
+        except Exception as e:
+            error_data = {"type": "error", "message": str(e)}
+            yield f"data: {json.dumps(error_data)}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 # ============== WHATSAPP ENDPOINTS ==============
