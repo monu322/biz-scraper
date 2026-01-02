@@ -564,33 +564,37 @@ export default function NicheDetailPage() {
   // Extract area name from address (removes postcodes)
   const getAreaFromAddress = (address: string | null): string => {
     if (!address) return "your area";
-    // Try to extract city/area from address - usually after street number/name
-    const parts = address.split(",").map(p => p.trim());
-    // Usually the city is the 2nd or 3rd part of UK addresses
-    if (parts.length >= 2) {
-      // Try to find a meaningful location (not a postcode)
-      for (let i = 1; i < Math.min(parts.length, 4); i++) {
-        const part = parts[i];
-        // Skip if it looks like a UK postcode (e.g., B8 2LL, SW1A 1AA, M1 1AA)
-        // UK postcodes: 1-2 letters, 1-2 digits, optional space, digit, 2 letters
-        const postcodeRegex = /^[A-Z]{1,2}\d{1,2}\s*\d?[A-Z]{0,2}$/i;
-        if (part && !postcodeRegex.test(part)) {
-          // Also check it's not just numbers or very short
-          if (part.length > 2 && !/^\d+$/.test(part)) {
-            return part;
-          }
-        }
-      }
-      // Fallback: return first non-postcode part
-      for (const part of parts) {
-        const postcodeRegex = /^[A-Z]{1,2}\d{1,2}\s*\d?[A-Z]{0,2}$/i;
-        if (part && !postcodeRegex.test(part) && part.length > 3 && !/^\d/.test(part)) {
-          return part;
-        }
-      }
-      return "your area";
+    
+    // Full UK postcode regex (matches: B8 2LL, SW1A 1AA, M1 1AA, EC1A 1BB, W1A 0AX, etc.)
+    // This captures most UK postcode formats
+    const fullPostcodeRegex = /\b[A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2}\b/gi;
+    
+    // Remove any postcodes from the address string first
+    let cleanAddress = address.replace(fullPostcodeRegex, "").trim();
+    
+    // Split by comma
+    const parts = cleanAddress.split(",").map(p => p.trim()).filter(p => p.length > 0);
+    
+    // Look for a city/town name (skip street addresses that start with numbers)
+    for (const part of parts) {
+      // Skip if it starts with a number (likely a street address)
+      if (/^\d/.test(part)) continue;
+      // Skip if it's "UK" or "United Kingdom"
+      if (/^(UK|United Kingdom|England|Scotland|Wales)$/i.test(part)) continue;
+      // Skip if it's too short
+      if (part.length < 3) continue;
+      // Skip if it contains numbers (partial postcodes or street numbers)
+      if (/\d/.test(part)) continue;
+      // This looks like a valid area name
+      return part;
     }
-    return address.split(",")[0] || "your area";
+    
+    // If nothing found, try to get the second part (often the city)
+    if (parts.length >= 2 && !/^\d/.test(parts[1]) && parts[1].length > 2) {
+      return parts[1];
+    }
+    
+    return "your area";
   };
 
   // Generate prefilled WhatsApp message
