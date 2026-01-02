@@ -631,17 +631,20 @@ Book here: https://calendly.com/john-neurosphere/30min`;
       width: 250,
       type: "string",
       renderCell: (params: GridRenderCellParams<any, string>) => {
-        // Use the actual Google Maps URL if available, otherwise fallback to search
+        // Use place_id for direct link, otherwise fallback to googleMapsUrl or search
         const row = params.row;
         let googleMapsUrl: string;
-        if (row.googleMapsUrl) {
-          googleMapsUrl = row.googleMapsUrl;
-        } else if (row.placeId) {
+        if (row.placeId) {
+          // Place ID gives the most accurate direct link
           googleMapsUrl = `https://www.google.com/maps/place/?q=place_id:${row.placeId}`;
-        } else if (row.latitude && row.longitude) {
-          googleMapsUrl = `https://www.google.com/maps?q=${row.latitude},${row.longitude}`;
+        } else if (row.googleMapsUrl) {
+          googleMapsUrl = row.googleMapsUrl;
         } else {
-          googleMapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(params.value || "")}`;
+          // Last resort - search by name and address
+          const searchQuery = row.address 
+            ? `${params.value}, ${row.address}` 
+            : params.value || "";
+          googleMapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
         }
         return (
           <Box className="flex h-full items-center gap-2">
