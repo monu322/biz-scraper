@@ -561,9 +561,42 @@ export default function NicheDetailPage() {
     }
   };
 
+  // Extract area name from address
+  const getAreaFromAddress = (address: string | null): string => {
+    if (!address) return "your area";
+    // Try to extract city/area from address - usually after street number/name
+    const parts = address.split(",").map(p => p.trim());
+    // Usually the city is the 2nd or 3rd part of UK addresses
+    if (parts.length >= 2) {
+      // Try to find a meaningful location (not a postcode)
+      for (let i = 1; i < Math.min(parts.length, 3); i++) {
+        const part = parts[i];
+        // Skip if it looks like a postcode (contains numbers and letters mixed)
+        if (part && !/^[A-Z]{1,2}\d/.test(part.toUpperCase())) {
+          return part;
+        }
+      }
+      return parts[1] || "your area";
+    }
+    return address.split(",")[0] || "your area";
+  };
+
+  // Generate prefilled WhatsApp message
+  const generateWhatsAppMessage = (row: Row): string => {
+    const area = getAreaFromAddress(row.address);
+    return `Hi,
+
+This is John from NeuroSphere, a London based digital media agency. I was looking into local businesses in ${area} that had amazing reviews but no website.
+
+Would you be interested in a FREE website for your business? If yes book a call with us today and we will develop an amazing free website for you.
+
+Book here: https://calendly.com/john-neurosphere/30min`;
+  };
+
   // Open no website dialog
   const openNoWebsiteDialog = (row: Row) => {
     setSelectedContactForAction(row);
+    setSmsMessage(generateWhatsAppMessage(row));
     setNoWebsiteDialogOpen(true);
   };
 
