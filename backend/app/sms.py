@@ -2,17 +2,17 @@ from twilio.rest import Client
 from app.config import get_settings
 
 
-class SMSService:
-    """Service for sending SMS messages using Twilio."""
+class WhatsAppService:
+    """Service for sending WhatsApp messages using Twilio."""
     
     def __init__(self):
         settings = get_settings()
         self.client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
-        self.from_number = settings.twilio_phone_number
+        self.from_number = settings.twilio_whatsapp_number  # WhatsApp number
     
-    async def send_sms(self, to_number: str, message: str) -> dict:
+    async def send_whatsapp(self, to_number: str, message: str) -> dict:
         """
-        Send an SMS message.
+        Send a WhatsApp message.
         
         Args:
             to_number: The recipient's phone number (E.164 format, e.g., +14155551234)
@@ -32,23 +32,27 @@ class SMSService:
                     "sid": None
                 }
             
-            # Send the message
+            # Format for WhatsApp - prepend 'whatsapp:' to both numbers
+            whatsapp_to = f"whatsapp:{formatted_number}"
+            whatsapp_from = f"whatsapp:{self.from_number}"
+            
+            # Send the WhatsApp message
             message_response = self.client.messages.create(
                 body=message,
-                from_=self.from_number,
-                to=formatted_number
+                from_=whatsapp_from,
+                to=whatsapp_to
             )
             
             return {
                 "success": True,
-                "message": f"SMS sent successfully to {formatted_number}",
+                "message": f"WhatsApp message sent successfully to {formatted_number}",
                 "sid": message_response.sid
             }
             
         except Exception as e:
             return {
                 "success": False,
-                "message": f"Failed to send SMS: {str(e)}",
+                "message": f"Failed to send WhatsApp message: {str(e)}",
                 "sid": None
             }
     
@@ -81,3 +85,7 @@ class SMSService:
             return '+' + cleaned
         
         return None
+
+
+# Keep SMSService as an alias for backward compatibility
+SMSService = WhatsAppService

@@ -18,7 +18,8 @@ class Settings(BaseSettings):
     # Twilio Configuration
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
-    twilio_phone_number: str = ""
+    twilio_phone_number: str = ""  # Legacy SMS number (optional)
+    twilio_whatsapp_number: str = "+14155238886"  # Default Twilio WhatsApp Sandbox number
     
     # API Configuration
     api_host: str = "0.0.0.0"

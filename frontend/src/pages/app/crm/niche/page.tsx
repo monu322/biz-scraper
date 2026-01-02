@@ -233,13 +233,13 @@ export default function NicheDetailPage() {
   const [smsMessage, setSmsMessage] = useState("");
   const [sendingSms, setSendingSms] = useState(false);
   
-  // Handle sending SMS via Twilio
-  const handleSendSms = async () => {
+  // Handle sending WhatsApp via Twilio
+  const handleSendWhatsApp = async () => {
     if (!selectedContactForAction || !smsMessage.trim()) return;
     
     setSendingSms(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/contacts/${selectedContactForAction.id}/send-sms`, {
+      const response = await fetch(`http://localhost:8000/api/contacts/${selectedContactForAction.id}/send-whatsapp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: smsMessage }),
@@ -248,21 +248,24 @@ export default function NicheDetailPage() {
       const data = await response.json();
       
       if (data.success) {
-        alert("SMS sent successfully!");
+        alert("WhatsApp message sent successfully!");
         setSmsMessage("");
         await fetchContacts();
         setNoWebsiteDialogOpen(false);
         setSelectedContactForAction(null);
       } else {
-        alert(`Failed to send SMS: ${data.message}`);
+        alert(`Failed to send WhatsApp: ${data.message}`);
       }
     } catch (error) {
-      console.error("Error sending SMS:", error);
-      alert("Failed to send SMS. Please check your Twilio configuration.");
+      console.error("Error sending WhatsApp:", error);
+      alert("Failed to send WhatsApp message. Please check your Twilio configuration.");
     } finally {
       setSendingSms(false);
     }
   };
+  
+  // Alias for backward compatibility
+  const handleSendSms = handleSendWhatsApp;
 
   // Handle view mode change
   const handleViewModeChange = (_event: MouseEvent<HTMLElement>, newMode: ViewMode | null) => {
@@ -805,18 +808,18 @@ export default function NicheDetailPage() {
         </DialogTitle>
         <DialogContent>
           <Box className="flex flex-col gap-4 pt-2">
-            {/* Send SMS Section - At the top */}
-            <Box className="rounded-lg border border-primary/30 bg-primary/5 p-4">
+            {/* Send WhatsApp Section - At the top */}
+            <Box className="rounded-lg border border-green-500/30 bg-green-500/5 p-4">
               <Typography variant="subtitle1" className="font-bold mb-3 flex items-center gap-2">
-                <span>💬</span> Send SMS
+                <span>💬</span> Send WhatsApp Message
               </Typography>
               {selectedContactForAction?.phone ? (
                 <>
                   <Typography variant="body2" className="mb-2">
-                    Send an SMS to: <strong>{selectedContactForAction.phone}</strong>
+                    Send a WhatsApp message to: <strong>{selectedContactForAction.phone}</strong>
                   </Typography>
                   <TextField
-                    label="SMS Message"
+                    label="WhatsApp Message"
                     variant="outlined"
                     fullWidth
                     multiline
@@ -829,13 +832,13 @@ export default function NicheDetailPage() {
                   />
                   <Button 
                     variant="contained" 
-                    color="primary" 
+                    color="success" 
                     fullWidth
                     disabled={sendingSms || !smsMessage.trim()}
-                    onClick={handleSendSms}
-                    startIcon={<span>📤</span>}
+                    onClick={handleSendWhatsApp}
+                    startIcon={<span>📲</span>}
                   >
-                    {sendingSms ? "Sending SMS..." : "Send SMS via Twilio"}
+                    {sendingSms ? "Sending WhatsApp..." : "Send via WhatsApp"}
                   </Button>
                 </>
               ) : (

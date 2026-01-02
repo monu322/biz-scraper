@@ -5,7 +5,7 @@ from app.models import ScrapeRequest, ScrapeResponse, ContactResponse, NicheCrea
 from app.database import db
 from app.scraper import ScraperService
 from app.enrichment import enrichment_service
-from app.sms import SMSService
+from app.sms import WhatsAppService
 from typing import List
 
 # Initialize settings
@@ -467,15 +467,15 @@ async def enrich_niche_emails(niche_id: int):
         )
 
 
-# ============== SMS ENDPOINTS ==============
+# ============== WHATSAPP ENDPOINTS ==============
 
-class SendSMSRequest(BaseModel):
+class SendWhatsAppRequest(BaseModel):
     message: str
 
-@app.post("/api/contacts/{contact_id}/send-sms", response_model=SMSResponse)
-async def send_sms_to_contact(contact_id: int, request: SendSMSRequest):
+@app.post("/api/contacts/{contact_id}/send-whatsapp", response_model=SMSResponse)
+async def send_whatsapp_to_contact(contact_id: int, request: SendWhatsAppRequest):
     """
-    Send an SMS message to a contact using Twilio.
+    Send a WhatsApp message to a contact using Twilio.
     
     The contact must have a valid phone number.
     """
@@ -493,16 +493,16 @@ async def send_sms_to_contact(contact_id: int, request: SendSMSRequest):
                 sid=None
             )
         
-        # Initialize SMS service and send message
-        sms_service = SMSService()
-        result = await sms_service.send_sms(
+        # Initialize WhatsApp service and send message
+        whatsapp_service = WhatsAppService()
+        result = await whatsapp_service.send_whatsapp(
             to_number=contact["phone"],
             message=request.message
         )
         
         # If successful, add status to contact
         if result["success"]:
-            await db.add_contact_status(contact_id, "SMS sent")
+            await db.add_contact_status(contact_id, "WhatsApp sent")
         
         return SMSResponse(
             success=result["success"],
@@ -513,11 +513,18 @@ async def send_sms_to_contact(contact_id: int, request: SendSMSRequest):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in send_sms_to_contact: {e}")
+        print(f"Error in send_whatsapp_to_contact: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"An error occurred while sending SMS: {str(e)}"
+            detail=f"An error occurred while sending WhatsApp message: {str(e)}"
         )
+
+
+# Legacy SMS endpoint (kept for backward compatibility, now uses WhatsApp)
+@app.post("/api/contacts/{contact_id}/send-sms", response_model=SMSResponse)
+async def send_sms_to_contact(contact_id: int, request: SendWhatsAppRequest):
+    """Legacy SMS endpoint - now sends via WhatsApp."""
+    return await send_whatsapp_to_contact(contact_id, request)
 
 
 if __name__ == "__main__":
