@@ -54,6 +54,12 @@ class ScraperService:
                 lat = location.get("lat") if isinstance(location, dict) else None
                 lng = location.get("lng") if isinstance(location, dict) else None
                 
+                # Extract opening hours
+                opening_hours = self._extract_opening_hours(item)
+                
+                # Extract services and products from additionalInfo or categories
+                services = self._extract_list_field(item, ["categories", "additionalCategories"])
+                
                 contact = ContactCreate(
                     name=item.get("title", "Unknown"),
                     email=self._extract_email(item),
@@ -67,6 +73,14 @@ class ScraperService:
                     status="Lead",
                     latitude=float(lat) if lat else None,
                     longitude=float(lng) if lng else None,
+                    # Additional business details
+                    description=item.get("description", None),
+                    opening_hours=opening_hours,
+                    services=services,
+                    products=None,  # Will be filled if available
+                    price_range=item.get("price", None) or item.get("priceLevel", None),
+                    google_maps_url=item.get("url", None),
+                    place_id=item.get("placeId", None),
                 )
                 contacts.append(contact)
             
@@ -99,3 +113,29 @@ class ScraperService:
                 email = people[0].get("email")
         
         return email
+    
+    def _extract_opening_hours(self, item: dict) -> dict | None:
+        """Extract opening hours from various possible fields."""
+        # Try different field names used by different scrapers
+        hours = item.get("openingHours") or item.get("hours") or item.get("workingHours")
+        
+        if hours:
+            # If it's already a dict, return it
+            if isinstance(hours, dict):
+                return hours
+            # If it's a list of strings, convert to dict
+            if isinstance(hours, list):
+                return {"schedule": hours}
+        
+        return None
+    
+    def _extract_list_field(self, item: dict, field_names: list) -> list | None:
+        """Extract a list field from various possible field names."""
+        for field_name in field_names:
+            value = item.get(field_name)
+            if value:
+                if isinstance(value, list):
+                    return value
+                if isinstance(value, str):
+                    return [value]
+        return None

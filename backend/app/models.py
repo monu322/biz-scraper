@@ -49,6 +49,14 @@ class ContactCreate(BaseModel):
     niche_id: Optional[int] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    # Additional business details
+    description: Optional[str] = None
+    opening_hours: Optional[dict] = None  # JSON object with days/hours
+    services: Optional[List[str]] = None
+    products: Optional[List[str]] = None
+    price_range: Optional[str] = None
+    google_maps_url: Optional[str] = None
+    place_id: Optional[str] = None
 
 
 class ContactResponse(BaseModel):
@@ -68,6 +76,27 @@ class ContactResponse(BaseModel):
     last_contact: Optional[datetime] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    # Additional business details
+    description: Optional[str] = None
+    opening_hours: Optional[dict] = None
+    services: Optional[List[str]] = None
+    products: Optional[List[str]] = None
+    price_range: Optional[str] = None
+    google_maps_url: Optional[str] = None
+    place_id: Optional[str] = None
+
+
+class SMSRequest(BaseModel):
+    """Request model for sending SMS."""
+    contact_id: int
+    message: str
+
+
+class SMSResponse(BaseModel):
+    """Response model for SMS."""
+    success: bool
+    message: str
+    sid: Optional[str] = None
 
 
 class ScrapeResponse(BaseModel):

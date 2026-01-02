@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_key: str
     
+    # Twilio Configuration
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_phone_number: str = ""
+    
     # API Configuration
     api_host: str = "0.0.0.0"
     api_port: int = 8000

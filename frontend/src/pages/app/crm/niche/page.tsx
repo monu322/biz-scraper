@@ -118,6 +118,14 @@ interface Contact {
   updated_at: string;
   latitude: number | null;
   longitude: number | null;
+  // Additional business details
+  description: string | null;
+  opening_hours: { schedule?: string[] } | null;
+  services: string[] | null;
+  products: string[] | null;
+  price_range: string | null;
+  google_maps_url: string | null;
+  place_id: string | null;
 }
 
 type Row = {
@@ -134,6 +142,15 @@ type Row = {
   status: string;
   latitude: number | null;
   longitude: number | null;
+  // Additional business details
+  description: string | null;
+  openingHours: { schedule?: string[] } | null;
+  services: string[] | null;
+  products: string[] | null;
+  priceRange: string | null;
+  googleMapsUrl: string | null;
+  category: string | null;
+  reviewsCount: number | null;
 };
 
 type ViewMode = "table" | "map";
@@ -211,6 +228,41 @@ export default function NicheDetailPage() {
   const [noWebsiteDialogOpen, setNoWebsiteDialogOpen] = useState(false);
   const [selectedContactForAction, setSelectedContactForAction] = useState<Row | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  
+  // SMS state
+  const [smsMessage, setSmsMessage] = useState("");
+  const [sendingSms, setSendingSms] = useState(false);
+  
+  // Handle sending SMS via Twilio
+  const handleSendSms = async () => {
+    if (!selectedContactForAction || !smsMessage.trim()) return;
+    
+    setSendingSms(true);
+    try {
+      const response = await fetch(`http://localhost:8000/api/contacts/${selectedContactForAction.id}/send-sms`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: smsMessage }),
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        alert("SMS sent successfully!");
+        setSmsMessage("");
+        await fetchContacts();
+        setNoWebsiteDialogOpen(false);
+        setSelectedContactForAction(null);
+      } else {
+        alert(`Failed to send SMS: ${data.message}`);
+      }
+    } catch (error) {
+      console.error("Error sending SMS:", error);
+      alert("Failed to send SMS. Please check your Twilio configuration.");
+    } finally {
+      setSendingSms(false);
+    }
+  };
 
   // Handle view mode change
   const handleViewModeChange = (_event: MouseEvent<HTMLElement>, newMode: ViewMode | null) => {
@@ -274,6 +326,15 @@ export default function NicheDetailPage() {
         status: contact.status,
         latitude: contact.latitude,
         longitude: contact.longitude,
+        // Additional business details
+        description: contact.description,
+        openingHours: contact.opening_hours,
+        services: contact.services,
+        products: contact.products,
+        priceRange: contact.price_range,
+        googleMapsUrl: contact.google_maps_url,
+        category: contact.category,
+        reviewsCount: contact.reviews_count,
       }));
       
       setRows(transformedRows);
@@ -734,51 +795,189 @@ export default function NicheDetailPage() {
         </Grid>
       </Grid>
 
-      {/* No Website Action Dialog */}
-      <Dialog open={noWebsiteDialogOpen} onClose={() => { setNoWebsiteDialogOpen(false); setSelectedContactForAction(null); }} maxWidth="xs" fullWidth>
-        <DialogTitle>Contact Without Website</DialogTitle>
+      {/* No Website Action Dialog - Enhanced with full business details */}
+      <Dialog open={noWebsiteDialogOpen} onClose={() => { setNoWebsiteDialogOpen(false); setSelectedContactForAction(null); setSmsMessage(""); }} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Box className="flex items-center gap-2">
+            <span className="text-2xl">🏢</span>
+            <span>{selectedContactForAction?.name}</span>
+          </Box>
+        </DialogTitle>
         <DialogContent>
-          <Box className="flex flex-col gap-3 pt-2">
-            <Typography variant="body2" color="text.secondary">
-              <strong>{selectedContactForAction?.name}</strong> doesn't have a website. What action would you like to take?
-            </Typography>
-            {selectedContactForAction?.phone && (
-              <Typography variant="body2">
-                📞 Phone: <strong>{selectedContactForAction.phone}</strong>
+          <Box className="flex flex-col gap-4 pt-2">
+            {/* Send SMS Section - At the top */}
+            <Box className="rounded-lg border border-primary/30 bg-primary/5 p-4">
+              <Typography variant="subtitle1" className="font-bold mb-3 flex items-center gap-2">
+                <span>💬</span> Send SMS
               </Typography>
-            )}
-            <Box className="flex flex-col gap-2 mt-2">
+              {selectedContactForAction?.phone ? (
+                <>
+                  <Typography variant="body2" className="mb-2">
+                    Send an SMS to: <strong>{selectedContactForAction.phone}</strong>
+                  </Typography>
+                  <TextField
+                    label="SMS Message"
+                    variant="outlined"
+                    fullWidth
+                    multiline
+                    rows={3}
+                    value={smsMessage}
+                    onChange={(e) => setSmsMessage(e.target.value)}
+                    placeholder="Hi! I noticed your business doesn't have a website. I can help you create a professional website to attract more customers. Would you like to learn more?"
+                    disabled={sendingSms}
+                    className="mb-2"
+                  />
+                  <Button 
+                    variant="contained" 
+                    color="primary" 
+                    fullWidth
+                    disabled={sendingSms || !smsMessage.trim()}
+                    onClick={handleSendSms}
+                    startIcon={<span>📤</span>}
+                  >
+                    {sendingSms ? "Sending SMS..." : "Send SMS via Twilio"}
+                  </Button>
+                </>
+              ) : (
+                <Typography variant="body2" color="error">
+                  ⚠️ No phone number available for this contact.
+                </Typography>
+              )}
+            </Box>
+
+            {/* Business Details Section */}
+            <Box className="rounded-lg border border-grey-200 bg-grey-50 p-4">
+              <Typography variant="subtitle1" className="font-bold mb-3 flex items-center gap-2">
+                <span>📋</span> Business Details (for website building)
+              </Typography>
+              
+              <Grid container spacing={2}>
+                {/* Basic Info */}
+                <Grid size={12}>
+                  <Typography variant="caption" className="text-text-secondary">Business Name</Typography>
+                  <Typography variant="body2" className="font-medium">{selectedContactForAction?.name || "N/A"}</Typography>
+                </Grid>
+                
+                {selectedContactForAction?.category && (
+                  <Grid size={6}>
+                    <Typography variant="caption" className="text-text-secondary">Category</Typography>
+                    <Typography variant="body2">{selectedContactForAction.category}</Typography>
+                  </Grid>
+                )}
+                
+                {selectedContactForAction?.priceRange && (
+                  <Grid size={6}>
+                    <Typography variant="caption" className="text-text-secondary">Price Range</Typography>
+                    <Typography variant="body2">{selectedContactForAction.priceRange}</Typography>
+                  </Grid>
+                )}
+                
+                {/* Contact Info */}
+                {selectedContactForAction?.phone && (
+                  <Grid size={6}>
+                    <Typography variant="caption" className="text-text-secondary">📞 Phone</Typography>
+                    <Typography variant="body2">{selectedContactForAction.phone}</Typography>
+                  </Grid>
+                )}
+                
+                {selectedContactForAction?.address && (
+                  <Grid size={6}>
+                    <Typography variant="caption" className="text-text-secondary">📍 Address</Typography>
+                    <Typography variant="body2">{selectedContactForAction.address}</Typography>
+                  </Grid>
+                )}
+                
+                {/* Rating & Reviews */}
+                {(selectedContactForAction?.rating || selectedContactForAction?.reviewsCount) && (
+                  <Grid size={12}>
+                    <Typography variant="caption" className="text-text-secondary">⭐ Rating & Reviews</Typography>
+                    <Typography variant="body2">
+                      {selectedContactForAction.rating?.toFixed(1) || "N/A"} stars 
+                      {selectedContactForAction.reviewsCount ? ` (${selectedContactForAction.reviewsCount} reviews)` : ""}
+                    </Typography>
+                  </Grid>
+                )}
+                
+                {/* Description */}
+                {selectedContactForAction?.description && (
+                  <Grid size={12}>
+                    <Typography variant="caption" className="text-text-secondary">📝 Description</Typography>
+                    <Typography variant="body2">{selectedContactForAction.description}</Typography>
+                  </Grid>
+                )}
+                
+                {/* Opening Hours */}
+                {selectedContactForAction?.openingHours?.schedule && selectedContactForAction.openingHours.schedule.length > 0 && (
+                  <Grid size={12}>
+                    <Typography variant="caption" className="text-text-secondary">🕐 Opening Hours</Typography>
+                    <Box className="mt-1">
+                      {selectedContactForAction.openingHours.schedule.map((hour, idx) => (
+                        <Typography key={idx} variant="body2" className="text-sm">{hour}</Typography>
+                      ))}
+                    </Box>
+                  </Grid>
+                )}
+                
+                {/* Services */}
+                {selectedContactForAction?.services && selectedContactForAction.services.length > 0 && (
+                  <Grid size={12}>
+                    <Typography variant="caption" className="text-text-secondary">🛠️ Services/Categories</Typography>
+                    <Box className="flex flex-wrap gap-1 mt-1">
+                      {selectedContactForAction.services.map((service, idx) => (
+                        <Button key={idx} size="tiny" color="info" variant="pastel" className="pointer-events-none">
+                          {service}
+                        </Button>
+                      ))}
+                    </Box>
+                  </Grid>
+                )}
+                
+                {/* Products */}
+                {selectedContactForAction?.products && selectedContactForAction.products.length > 0 && (
+                  <Grid size={12}>
+                    <Typography variant="caption" className="text-text-secondary">📦 Products</Typography>
+                    <Box className="flex flex-wrap gap-1 mt-1">
+                      {selectedContactForAction.products.map((product, idx) => (
+                        <Button key={idx} size="tiny" color="success" variant="pastel" className="pointer-events-none">
+                          {product}
+                        </Button>
+                      ))}
+                    </Box>
+                  </Grid>
+                )}
+                
+                {/* Google Maps Link */}
+                {selectedContactForAction?.googleMapsUrl && (
+                  <Grid size={12}>
+                    <Typography variant="caption" className="text-text-secondary">🗺️ Google Maps</Typography>
+                    <Box>
+                      <a href={selectedContactForAction.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-sm">
+                        View on Google Maps →
+                      </a>
+                    </Box>
+                  </Grid>
+                )}
+              </Grid>
+            </Box>
+
+            {/* Quick Actions */}
+            <Box className="flex gap-2">
               <Button 
-                variant="contained" 
-                color="primary" 
+                variant="outlined" 
+                color="grey" 
                 fullWidth
-                disabled={updatingStatus || !selectedContactForAction?.phone}
+                disabled={updatingStatus}
                 onClick={() => handleNoWebsiteAction("call")}
                 startIcon={<span>📞</span>}
               >
-                {updatingStatus ? "Updating..." : "Make a Call"}
-              </Button>
-              <Button 
-                variant="contained" 
-                color="secondary" 
-                fullWidth
-                disabled={updatingStatus || !selectedContactForAction?.phone}
-                onClick={() => handleNoWebsiteAction("sms")}
-                startIcon={<span>💬</span>}
-              >
-                {updatingStatus ? "Updating..." : "Send an SMS"}
+                {updatingStatus ? "Updating..." : "Mark as Called"}
               </Button>
             </Box>
-            {!selectedContactForAction?.phone && (
-              <Typography variant="caption" color="error">
-                No phone number available for this contact.
-              </Typography>
-            )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setNoWebsiteDialogOpen(false); setSelectedContactForAction(null); }} color="grey" variant="text" disabled={updatingStatus}>
-            Cancel
+          <Button onClick={() => { setNoWebsiteDialogOpen(false); setSelectedContactForAction(null); setSmsMessage(""); }} color="grey" variant="text" disabled={updatingStatus || sendingSms}>
+            Close
           </Button>
         </DialogActions>
       </Dialog>

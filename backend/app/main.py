@@ -1,10 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
-from app.models import ScrapeRequest, ScrapeResponse, ContactResponse, NicheCreate, NicheResponse, NicheUpdate
+from app.models import ScrapeRequest, ScrapeResponse, ContactResponse, NicheCreate, NicheResponse, NicheUpdate, SMSRequest, SMSResponse
 from app.database import db
 from app.scraper import ScraperService
 from app.enrichment import enrichment_service
+from app.sms import SMSService
 from typing import List
 
 # Initialize settings
@@ -463,6 +464,59 @@ async def enrich_niche_emails(niche_id: int):
         raise HTTPException(
             status_code=500,
             detail=f"An error occurred while enriching emails: {str(e)}"
+        )
+
+
+# ============== SMS ENDPOINTS ==============
+
+class SendSMSRequest(BaseModel):
+    message: str
+
+@app.post("/api/contacts/{contact_id}/send-sms", response_model=SMSResponse)
+async def send_sms_to_contact(contact_id: int, request: SendSMSRequest):
+    """
+    Send an SMS message to a contact using Twilio.
+    
+    The contact must have a valid phone number.
+    """
+    try:
+        # Get contact
+        contact = await db.get_contact_by_id(contact_id)
+        if not contact:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        
+        # Check if contact has a phone number
+        if not contact.get("phone"):
+            return SMSResponse(
+                success=False,
+                message="Contact does not have a phone number",
+                sid=None
+            )
+        
+        # Initialize SMS service and send message
+        sms_service = SMSService()
+        result = await sms_service.send_sms(
+            to_number=contact["phone"],
+            message=request.message
+        )
+        
+        # If successful, add status to contact
+        if result["success"]:
+            await db.add_contact_status(contact_id, "SMS sent")
+        
+        return SMSResponse(
+            success=result["success"],
+            message=result["message"],
+            sid=result.get("sid")
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in send_sms_to_contact: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An error occurred while sending SMS: {str(e)}"
         )
 
 
