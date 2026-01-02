@@ -26,7 +26,7 @@ class ScraperService:
             # Ensure limit is within bounds
             limit = max(1, min(limit, 50))
             
-            # Prepare the Actor input with email extraction enabled
+            # Prepare the Actor input with email extraction and reviews enabled
             run_input = {
                 "searchStringsArray": [keyword],
                 "locationQuery": location,
@@ -36,6 +36,9 @@ class ScraperService:
                 "scrapePeopleAlsoSearch": False,   # Skip related searches
                 "exportPlaceUrls": False,
                 "includeWebResults": False,
+                "scrapeReviewsPersonalData": True,  # Get reviewer info
+                "maxReviews": 50,  # Get first 50 reviews per business
+                "reviewsSort": "mostRelevant",  # Sort by most relevant
             }
             
             # Run the Actor and wait for it to finish
@@ -60,6 +63,9 @@ class ScraperService:
                 # Extract services and products from additionalInfo or categories
                 services = self._extract_list_field(item, ["categories", "additionalCategories"])
                 
+                # Extract reviews (first 50)
+                reviews = self._extract_reviews(item)
+                
                 contact = ContactCreate(
                     name=item.get("title", "Unknown"),
                     email=self._extract_email(item),
@@ -81,6 +87,7 @@ class ScraperService:
                     price_range=item.get("price", None) or item.get("priceLevel", None),
                     google_maps_url=item.get("url", None),
                     place_id=item.get("placeId", None),
+                    reviews=reviews,  # First 50 reviews
                 )
                 contacts.append(contact)
             
@@ -139,3 +146,31 @@ class ScraperService:
                 if isinstance(value, str):
                     return [value]
         return None
+    
+    def _extract_reviews(self, item: dict) -> list | None:
+        """Extract reviews from the Apify result (first 50)."""
+        raw_reviews = item.get("reviews") or item.get("reviewsData") or []
+        
+        if not isinstance(raw_reviews, list) or len(raw_reviews) == 0:
+            return None
+        
+        # Limit to first 50 reviews
+        raw_reviews = raw_reviews[:50]
+        
+        reviews = []
+        for review in raw_reviews:
+            if not isinstance(review, dict):
+                continue
+            
+            # Extract review data with different possible field names
+            extracted = {
+                "author": review.get("name") or review.get("author") or review.get("reviewerName") or "Anonymous",
+                "rating": review.get("stars") or review.get("rating") or review.get("score"),
+                "text": review.get("text") or review.get("reviewText") or review.get("comment") or "",
+                "date": review.get("publishedAtDate") or review.get("date") or review.get("time") or review.get("publishAt"),
+                "response": review.get("responseFromOwnerText") or review.get("ownerResponse") or review.get("response"),
+                "likes": review.get("likesCount") or review.get("likes") or 0,
+            }
+            reviews.append(extracted)
+        
+        return reviews if reviews else None

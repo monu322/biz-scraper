@@ -102,6 +102,15 @@ interface Niche {
   contact_count: number;
 }
 
+interface Review {
+  author: string | null;
+  rating: number | null;
+  text: string | null;
+  date: string | null;
+  response: string | null;
+  likes: number | null;
+}
+
 interface Contact {
   id: string;
   name: string;
@@ -126,6 +135,7 @@ interface Contact {
   price_range: string | null;
   google_maps_url: string | null;
   place_id: string | null;
+  reviews: Review[] | null;
 }
 
 type Row = {
@@ -151,6 +161,7 @@ type Row = {
   googleMapsUrl: string | null;
   category: string | null;
   reviewsCount: number | null;
+  reviews: Review[] | null;
 };
 
 type ViewMode = "table" | "map";
@@ -338,6 +349,7 @@ export default function NicheDetailPage() {
         googleMapsUrl: contact.google_maps_url,
         category: contact.category,
         reviewsCount: contact.reviews_count,
+        reviews: contact.reviews,
       }));
       
       setRows(transformedRows);
@@ -962,6 +974,48 @@ export default function NicheDetailPage() {
                 )}
               </Grid>
             </Box>
+
+            {/* Reviews Section */}
+            {selectedContactForAction?.reviews && selectedContactForAction.reviews.length > 0 && (
+              <Box className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-4">
+                <Typography variant="subtitle1" className="font-bold mb-3 flex items-center gap-2">
+                  <span>⭐</span> Customer Reviews ({selectedContactForAction.reviews.length})
+                </Typography>
+                <Box className="max-h-80 overflow-y-auto space-y-3">
+                  {selectedContactForAction.reviews.map((review, idx) => (
+                    <Box key={idx} className="rounded-lg bg-white p-3 border border-grey-200">
+                      <Box className="flex items-center justify-between mb-2">
+                        <Typography variant="body2" className="font-medium">{review.author || "Anonymous"}</Typography>
+                        <Box className="flex items-center gap-1">
+                          {review.rating && (
+                            <Box className="flex items-center gap-0.5">
+                              {[...Array(5)].map((_, i) => (
+                                <span key={i} className={i < (review.rating || 0) ? "text-yellow-500" : "text-gray-300"}>★</span>
+                              ))}
+                            </Box>
+                          )}
+                          {review.date && (
+                            <Typography variant="caption" className="text-text-secondary ml-2">{review.date}</Typography>
+                          )}
+                        </Box>
+                      </Box>
+                      {review.text && (
+                        <Typography variant="body2" className="text-text-secondary mb-2">{review.text}</Typography>
+                      )}
+                      {review.response && (
+                        <Box className="bg-blue-50 rounded p-2 mt-2">
+                          <Typography variant="caption" className="font-medium text-blue-700">Owner Response:</Typography>
+                          <Typography variant="body2" className="text-blue-800">{review.response}</Typography>
+                        </Box>
+                      )}
+                      {review.likes && review.likes > 0 && (
+                        <Typography variant="caption" className="text-text-secondary">👍 {review.likes} found this helpful</Typography>
+                      )}
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            )}
 
             {/* Quick Actions */}
             <Box className="flex gap-2">

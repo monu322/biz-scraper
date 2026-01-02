@@ -34,6 +34,15 @@ class ScrapeRequest(BaseModel):
     niche_id: Optional[int] = None  # Associate contacts with a niche
 
 
+class Review(BaseModel):
+    """Model for a single review."""
+    author: Optional[str] = None
+    rating: Optional[float] = None
+    text: Optional[str] = None
+    date: Optional[str] = None
+    response: Optional[str] = None  # Business owner response
+
+
 class ContactCreate(BaseModel):
     """Model for creating a new contact."""
     name: str
@@ -57,6 +66,7 @@ class ContactCreate(BaseModel):
     price_range: Optional[str] = None
     google_maps_url: Optional[str] = None
     place_id: Optional[str] = None
+    reviews: Optional[List[dict]] = None  # List of reviews (first 50)
 
 
 class ContactResponse(BaseModel):
@@ -84,6 +94,7 @@ class ContactResponse(BaseModel):
     price_range: Optional[str] = None
     google_maps_url: Optional[str] = None
     place_id: Optional[str] = None
+    reviews: Optional[List[dict]] = None  # List of reviews (first 50)
 
 
 class SMSRequest(BaseModel):
