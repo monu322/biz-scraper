@@ -923,13 +923,26 @@ export default function NicheDetailPage() {
                 )}
                 
                 {/* Opening Hours */}
-                {selectedContactForAction?.openingHours?.schedule && selectedContactForAction.openingHours.schedule.length > 0 && (
+                {selectedContactForAction?.openingHours && (
                   <Grid size={12}>
                     <Typography variant="caption" className="text-text-secondary">🕐 Opening Hours</Typography>
                     <Box className="mt-1">
-                      {selectedContactForAction.openingHours.schedule.map((hour, idx) => (
-                        <Typography key={idx} variant="body2" className="text-sm">{hour}</Typography>
-                      ))}
+                      {/* Handle array of strings format */}
+                      {Array.isArray(selectedContactForAction.openingHours.schedule) && 
+                        selectedContactForAction.openingHours.schedule.map((hour, idx) => (
+                          <Typography key={idx} variant="body2" className="text-sm">
+                            {typeof hour === 'string' ? hour : `${hour.day}: ${hour.hours}`}
+                          </Typography>
+                        ))
+                      }
+                      {/* Handle direct array format */}
+                      {Array.isArray(selectedContactForAction.openingHours) && 
+                        selectedContactForAction.openingHours.map((hour: any, idx: number) => (
+                          <Typography key={idx} variant="body2" className="text-sm">
+                            {typeof hour === 'string' ? hour : `${hour.day || hour.dayRange || ''}: ${hour.hours || hour.time || ''}`}
+                          </Typography>
+                        ))
+                      }
                     </Box>
                   </Grid>
                 )}
