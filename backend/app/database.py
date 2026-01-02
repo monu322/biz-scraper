@@ -113,6 +113,15 @@ class Database:
                     "niche_id": contact.niche_id,
                     "latitude": contact.latitude,
                     "longitude": contact.longitude,
+                    # Additional business details
+                    "description": contact.description,
+                    "opening_hours": contact.opening_hours,
+                    "services": contact.services,
+                    "products": contact.products,
+                    "price_range": contact.price_range,
+                    "google_maps_url": contact.google_maps_url,
+                    "place_id": contact.place_id,
+                    "reviews": contact.reviews,
                 }
                 
                 if existing:
