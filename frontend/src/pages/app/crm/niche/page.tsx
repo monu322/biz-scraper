@@ -663,6 +663,7 @@ export default function NicheDetailPage() {
               </Button>
             </Tooltip>
 
+
             <Tooltip title="Export">
               <Button className="icon-only surface-standard" size="medium" color="grey" variant="surface" startIcon={<NiArrowInDown size={"medium"} />} onClick={(e) => setAnchorElExport(e.currentTarget)} />
             </Tooltip>
@@ -923,7 +924,7 @@ export default function NicheDetailPage() {
             </Typography>
           </Grid>
         ) : (
-          <Grid size={12}>
+          <Grid size={12} className="overflow-hidden">
             <DataGrid
               rows={filteredRows}
               columns={columns}
@@ -936,8 +937,30 @@ export default function NicheDetailPage() {
               pageSizeOptions={[10]}
               className="full-page border-none"
               pagination
-              slotProps={{ panel: { className: "mt-1!" }, main: { className: "min-h-[600px]! overflow-visible" } }}
+              slotProps={{ panel: { className: "mt-1!" }, main: { className: "min-h-[600px]!" } }}
               slots={{
+                toolbar: () => (
+                  <Toolbar className="mb-4">
+                    <Box className="flex items-center gap-2">
+                      <ColumnsPanelTrigger render={(props) => (
+                        <Tooltip title="Columns">
+                          <Button {...props} className="icon-only surface-standard" size="medium" color="grey" variant="surface">
+                            <NiCols size={"medium"} />
+                          </Button>
+                        </Tooltip>
+                      )} />
+                      <FilterPanelTrigger render={(props, state) => (
+                        <Tooltip title="Filters">
+                          <Button {...props} className="icon-only surface-standard" size="medium" color="grey" variant="surface">
+                            <Badge badgeContent={state.filterCount} color="primary" variant="dot">
+                              <NiFilter size={"medium"} />
+                            </Badge>
+                          </Button>
+                        </Tooltip>
+                      )} />
+                    </Box>
+                  </Toolbar>
+                ),
                 basePagination: DataGridPaginationFullPage,
                 columnSortedDescendingIcon: () => <NiArrowDown size={"small"} />,
                 columnSortedAscendingIcon: () => <NiArrowUp size={"small"} />,
