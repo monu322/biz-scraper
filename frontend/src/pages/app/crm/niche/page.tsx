@@ -60,6 +60,7 @@ import {
   QuickFilterClear,
   QuickFilterControl,
   Toolbar,
+  useGridApiRef,
 } from "@mui/x-data-grid";
 
 import DataGridDateTimeFilter from "@/components/data-grid/data-grid-date-time-filter";
@@ -189,6 +190,9 @@ export default function NicheDetailPage() {
     type: "include",
     ids: new Set(),
   });
+  
+  // DataGrid API reference for controlling panels
+  const apiRef = useGridApiRef();
 
   const [scrapeDialogOpen, setScrapeDialogOpen] = useState(false);
   const [scrapeKeyword, setScrapeKeyword] = useState("");
@@ -663,6 +667,33 @@ export default function NicheDetailPage() {
               </Button>
             </Tooltip>
 
+            {viewMode === "table" && (
+              <>
+                <Tooltip title="Columns">
+                  <Button 
+                    className="icon-only surface-standard" 
+                    size="medium" 
+                    color="grey" 
+                    variant="surface" 
+                    onClick={() => apiRef.current?.showPreferences?.('columns')}
+                  >
+                    <NiCols size={"medium"} />
+                  </Button>
+                </Tooltip>
+
+                <Tooltip title="Filters">
+                  <Button 
+                    className="icon-only surface-standard" 
+                    size="medium" 
+                    color="grey" 
+                    variant="surface" 
+                    onClick={() => apiRef.current?.showFilterPanel?.()}
+                  >
+                    <NiFilter size={"medium"} />
+                  </Button>
+                </Tooltip>
+              </>
+            )}
 
             <Tooltip title="Export">
               <Button className="icon-only surface-standard" size="medium" color="grey" variant="surface" startIcon={<NiArrowInDown size={"medium"} />} onClick={(e) => setAnchorElExport(e.currentTarget)} />
@@ -926,6 +957,7 @@ export default function NicheDetailPage() {
         ) : (
           <Grid size={12} className="overflow-hidden">
             <DataGrid
+              apiRef={apiRef}
               rows={filteredRows}
               columns={columns}
               initialState={{ columns: { columnVisibilityModel: { avatar: false } }, pagination: { paginationModel: { pageSize: 10 } } }}
