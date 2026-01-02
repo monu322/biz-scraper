@@ -4,7 +4,7 @@ from app.config import get_settings
 
 # SANDBOX MODE: Override recipient number for testing
 # Set to None to send to actual business numbers
-SANDBOX_NUMBER = "+447529080583"  # Your test number
+SANDBOX_NUMBER = "+447539080583"  # Your test number (corrected)
 
 
 class WhatsAppService:
