@@ -321,7 +321,8 @@ export default function NicheDetailPage() {
     if (!nicheId) return;
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/niches/${nicheId}/contacts`);
+      // Fetch all contacts (increase limit to 1000)
+      const response = await fetch(`http://localhost:8000/api/niches/${nicheId}/contacts?limit=1000`);
       if (!response.ok) {
         throw new Error("Failed to fetch contacts");
       }
