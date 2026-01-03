@@ -1362,38 +1362,43 @@ Book here: https://calendly.com/john-neurosphere/30min`;
             </Box>
           </Grid>
         )}
+        {/* Shared Toolbar - above both views */}
+        <Grid size={12}>
+          <Box className="flex items-center gap-2 mb-4">
+            <Tooltip title="Filter: No Website">
+              <Button 
+                className="surface-standard flex-none" 
+                size="medium" 
+                color={noWebsiteFilterActive ? "primary" : "grey"}
+                variant={noWebsiteFilterActive ? "contained" : "surface"}
+                onClick={() => setNoWebsiteFilterActive(!noWebsiteFilterActive)}
+              >
+                🌐 No Website
+              </Button>
+            </Tooltip>
+            <Tooltip title="Export CSV (filtered)">
+              <Button 
+                className="icon-only surface-standard flex-none" 
+                size="medium" 
+                color="grey" 
+                variant="surface"
+                onClick={() => {
+                  if (filteredRows.length === 0) { alert("No rows"); return; }
+                  const csv = filteredRows.map((r, i) => `${i+1},"${(r.name||'').replace(/"/g,'""')}","${(r.email||'').replace(/"/g,'""')}","${(r.phone||'').replace(/"/g,'""')}","${(r.address||'').replace(/"/g,'""')}","${(r.website||'').replace(/"/g,'""')}"`).join('\n');
+                  const blob = new Blob([`Index,Name,Email,Phone,Address,Website\n${csv}`], { type: 'text/csv' });
+                  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${niche?.name || 'contacts'}_filtered_${filteredRows.length}.csv`; a.click();
+                }}
+              >
+                <NiArrowInDown size={"medium"} />
+              </Button>
+            </Tooltip>
+            <Box className="flex-grow" />
+            <Typography variant="body2" className="text-text-secondary">{filteredRows.length} contacts</Typography>
+          </Box>
+        </Grid>
+
         {viewMode === "map" ? (
           <Grid size={12}>
-            {/* Map toolbar */}
-            <Box className="flex items-center gap-2 mb-4">
-              <Tooltip title="Filter: No Website">
-                <Button 
-                  className="surface-standard flex-none" 
-                  size="medium" 
-                  color={noWebsiteFilterActive ? "primary" : "grey"}
-                  variant={noWebsiteFilterActive ? "contained" : "surface"}
-                  onClick={() => setNoWebsiteFilterActive(!noWebsiteFilterActive)}
-                >
-                  🌐 No Website
-                </Button>
-              </Tooltip>
-              <Tooltip title="Export CSV (filtered)">
-                <Button 
-                  className="icon-only surface-standard flex-none" 
-                  size="medium" 
-                  color="grey" 
-                  variant="surface"
-                  onClick={() => {
-                    if (filteredRows.length === 0) { alert("No rows"); return; }
-                    const csv = filteredRows.map((r, i) => `${i+1},"${(r.name||'').replace(/"/g,'""')}","${(r.email||'').replace(/"/g,'""')}","${(r.phone||'').replace(/"/g,'""')}","${(r.address||'').replace(/"/g,'""')}","${(r.website||'').replace(/"/g,'""')}"`).join('\n');
-                    const blob = new Blob([`Index,Name,Email,Phone,Address,Website\n${csv}`], { type: 'text/csv' });
-                    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${niche?.name || 'contacts'}_filtered_${filteredRows.length}.csv`; a.click();
-                  }}
-                >
-                  <NiArrowInDown size={"medium"} />
-                </Button>
-              </Tooltip>
-            </Box>
             {/* Inject CSS for magnifying glass cursor */}
             <style>{mapCursorStyle}</style>
             <Box className="rounded-lg overflow-hidden" style={{ height: "600px" }}>
