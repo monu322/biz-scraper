@@ -1388,28 +1388,40 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                   
                   // Get filtered/sorted rows from the grid API for export
                   const handleExportCsv = () => {
-                    // Access the filtering state to get only visible row IDs
-                    const state = apiRef.current?.state;
-                    const visibleRowIds = state?.filter?.filteredRowsLookup;
-                    const allRowIds = state?.rows?.dataRowIds || [];
+                    // Get the current filter model
+                    const filterModel = apiRef.current?.getFilterModel?.();
                     
-                    // Filter to only rows that pass the filter (value is true in lookup)
-                    let filteredIds: (string | number)[] = [];
-                    if (visibleRowIds) {
-                      filteredIds = allRowIds.filter((id: string | number) => visibleRowIds[id] === true);
-                    } else {
-                      filteredIds = allRowIds;
+                    // Start with all rows from filteredRows (which already handles search)
+                    let rowsToExport = [...filteredRows];
+                    
+                    // Apply DataGrid filters if any
+                    if (filterModel?.items && filterModel.items.length > 0) {
+                      rowsToExport = rowsToExport.filter(row => {
+                        return filterModel.items.every((filter: any) => {
+                          const value = row[filter.field as keyof Row];
+                          const filterValue = filter.value;
+                          
+                          if (!filterValue) return true;
+                          
+                          switch (filter.operator) {
+                            case 'equals':
+                              return value === filterValue;
+                            case 'contains':
+                              return String(value || '').toLowerCase().includes(String(filterValue).toLowerCase());
+                            case 'startsWith':
+                              return String(value || '').toLowerCase().startsWith(String(filterValue).toLowerCase());
+                            case 'endsWith':
+                              return String(value || '').toLowerCase().endsWith(String(filterValue).toLowerCase());
+                            case 'isEmpty':
+                              return !value || value === '';
+                            case 'isNotEmpty':
+                              return value && value !== '';
+                            default:
+                              return true;
+                          }
+                        });
+                      });
                     }
-                    
-                    if (filteredIds.length === 0) {
-                      alert("No rows to export");
-                      return;
-                    }
-                    
-                    // Get the row data for each filtered ID
-                    const rowsToExport: Row[] = filteredIds
-                      .map((id: string | number) => apiRef.current?.getRow?.(id))
-                      .filter((row: Row | undefined): row is Row => row !== undefined && row !== null);
                     
                     if (rowsToExport.length === 0) {
                       alert("No rows to export");
