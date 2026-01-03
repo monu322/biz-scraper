@@ -1388,16 +1388,26 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                   
                   // Get filtered/sorted rows from the grid API for export
                   const handleExportCsv = () => {
-                    // Get the sorted and filtered row IDs
-                    const sortedRowIds = apiRef.current?.getSortedRowIds?.() || [];
+                    // Access the filtering state to get only visible row IDs
+                    const state = apiRef.current?.state;
+                    const visibleRowIds = state?.filter?.filteredRowsLookup;
+                    const allRowIds = state?.rows?.dataRowIds || [];
                     
-                    if (sortedRowIds.length === 0) {
+                    // Filter to only rows that pass the filter (value is true in lookup)
+                    let filteredIds: (string | number)[] = [];
+                    if (visibleRowIds) {
+                      filteredIds = allRowIds.filter((id: string | number) => visibleRowIds[id] === true);
+                    } else {
+                      filteredIds = allRowIds;
+                    }
+                    
+                    if (filteredIds.length === 0) {
                       alert("No rows to export");
                       return;
                     }
                     
-                    // Get the row data for each visible ID
-                    const rowsToExport: Row[] = sortedRowIds
+                    // Get the row data for each filtered ID
+                    const rowsToExport: Row[] = filteredIds
                       .map((id: string | number) => apiRef.current?.getRow?.(id))
                       .filter((row: Row | undefined): row is Row => row !== undefined && row !== null);
                     
