@@ -1476,73 +1476,7 @@ Book here: https://calendly.com/john-neurosphere/30min`;
               showToolbar
               slotProps={{ panel: { className: "mt-1!" }, main: { className: "min-h-[600px]!" } }}
               slots={{
-                toolbar: function CustomToolbar() {
-                  // Export filtered rows - just use filteredRows state directly!
-                  const handleExportCsv = () => {
-                    if (filteredRows.length === 0) {
-                      alert("No rows to export");
-                      return;
-                    }
-                    
-                    // Create CSV content with index
-                    const csv = filteredRows.map((r, idx) => 
-                      `${idx + 1},"${(r.name || '').replace(/"/g, '""')}","${(r.email || '').replace(/"/g, '""')}","${(r.phone || '').replace(/"/g, '""')}","${(r.address || '').replace(/"/g, '""')}","${(r.website || '').replace(/"/g, '""')}"`
-                    ).join('\n');
-                    
-                    const blob = new Blob([`Index,Name,Email,Phone,Address,Website\n${csv}`], { type: 'text/csv' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `${niche?.name || 'contacts'}_filtered_${filteredRows.length}.csv`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  };
-                  
-                  return (
-                    <Toolbar className="mb-4">
-                      <Box className="flex items-center gap-2">
-                        <Tooltip title="Columns">
-                          <ColumnsPanelTrigger render={(props) => (
-                            <Button {...props} className="icon-only surface-standard flex-none" size="medium" color="grey" variant="surface">
-                              <NiCols size={"medium"} />
-                            </Button>
-                          )} />
-                        </Tooltip>
-                        <Tooltip title="Filters">
-                          <FilterPanelTrigger render={(props, state) => (
-                            <Button {...props} className="icon-only surface-standard flex-none" size="medium" color="grey" variant="surface">
-                              <Badge badgeContent={state.filterCount} color="primary" variant="dot">
-                                <NiFilter size={"medium"} />
-                              </Badge>
-                            </Button>
-                          )} />
-                        </Tooltip>
-                        <Tooltip title="Filter: No Website">
-                          <Button 
-                            className="surface-standard flex-none" 
-                            size="medium" 
-                            color={noWebsiteFilterActive ? "primary" : "grey"}
-                            variant={noWebsiteFilterActive ? "contained" : "surface"}
-                            onClick={() => setNoWebsiteFilterActive(!noWebsiteFilterActive)}
-                          >
-                            🌐 No Website
-                          </Button>
-                        </Tooltip>
-                        <Tooltip title="Export CSV (filtered)">
-                          <Button 
-                            className="icon-only surface-standard flex-none" 
-                            size="medium" 
-                            color="grey" 
-                            variant="surface"
-                            onClick={handleExportCsv}
-                          >
-                            <NiArrowInDown size={"medium"} />
-                          </Button>
-                        </Tooltip>
-                      </Box>
-                    </Toolbar>
-                  );
-                },
+                toolbar: () => null,
                 basePagination: DataGridPaginationFullPage,
                 columnSortedDescendingIcon: () => <NiArrowDown size={"small"} />,
                 columnSortedAscendingIcon: () => <NiArrowUp size={"small"} />,
