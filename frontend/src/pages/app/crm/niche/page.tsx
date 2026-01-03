@@ -1369,26 +1369,43 @@ Book here: https://calendly.com/john-neurosphere/30min`;
               slotProps={{ panel: { className: "mt-1!" }, main: { className: "min-h-[600px]!" } }}
               slots={{
                 toolbar: function CustomToolbar() {
-                  // Get filtered/sorted rows from the grid API
+                  // State for "No website" filter toggle
+                  const [noWebsiteFilter, setNoWebsiteFilter] = useState(false);
+                  
+                  // Toggle "No website" filter
+                  const handleNoWebsiteFilter = () => {
+                    setNoWebsiteFilter(!noWebsiteFilter);
+                    if (!noWebsiteFilter) {
+                      // Apply filter for "No website" (email = "No website")
+                      apiRef.current?.setFilterModel({
+                        items: [{ field: 'email', operator: 'equals', value: 'No website' }],
+                      });
+                    } else {
+                      // Clear filter
+                      apiRef.current?.setFilterModel({ items: [] });
+                    }
+                  };
+                  
+                  // Get filtered/sorted rows from the grid API for export
                   const handleExportCsv = () => {
-                    // Get the current filtered rows from the apiRef
-                    const filteredSortedRowIds = apiRef.current?.state?.sorting?.sortedRows || [];
-                    const rowsMap = apiRef.current?.state?.rows?.dataRowIdToModelLookup || {};
+                    // Get visible/filtered row IDs from the grid
+                    const visibleRowIds = apiRef.current?.getRowModels();
                     
-                    // Get the actual row data in sorted/filtered order
-                    const exportRows: Row[] = filteredSortedRowIds
-                      .map((id: string | number) => rowsMap[id])
-                      .filter(Boolean);
+                    if (!visibleRowIds || visibleRowIds.size === 0) {
+                      alert("No rows to export");
+                      return;
+                    }
                     
-                    // If no filtered rows, use filteredRows from state
-                    const rowsToExport = exportRows.length > 0 ? exportRows : filteredRows;
+                    // Convert Map to array and export
+                    const rowsToExport: Row[] = [];
+                    visibleRowIds.forEach((row) => rowsToExport.push(row as Row));
                     
-                    // Create CSV content
-                    const csv = rowsToExport.map(r => 
-                      `"${r.name}","${r.email || ''}","${r.phone || ''}","${r.address || ''}","${r.website || ''}"`
+                    // Create CSV content with index
+                    const csv = rowsToExport.map((r, idx) => 
+                      `${idx + 1},"${r.name}","${r.email || ''}","${r.phone || ''}","${r.address || ''}","${r.website || ''}"`
                     ).join('\n');
                     
-                    const blob = new Blob([`Name,Email,Phone,Address,Website\n${csv}`], { type: 'text/csv' });
+                    const blob = new Blob([`Index,Name,Email,Phone,Address,Website\n${csv}`], { type: 'text/csv' });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
@@ -1415,6 +1432,17 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                               </Badge>
                             </Button>
                           )} />
+                        </Tooltip>
+                        <Tooltip title="Filter: No Website">
+                          <Button 
+                            className="surface-standard flex-none" 
+                            size="medium" 
+                            color={noWebsiteFilter ? "primary" : "grey"}
+                            variant={noWebsiteFilter ? "contained" : "surface"}
+                            onClick={handleNoWebsiteFilter}
+                          >
+                            🌐 No Website
+                          </Button>
                         </Tooltip>
                         <Tooltip title="Export CSV (filtered)">
                           <Button 
