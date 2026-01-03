@@ -1388,28 +1388,34 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                   
                   // Get filtered/sorted rows from the grid API for export
                   const handleExportCsv = () => {
-                    // Get visible/filtered row IDs from the grid
-                    const visibleRowIds = apiRef.current?.getRowModels();
+                    // Get the sorted and filtered row IDs
+                    const sortedRowIds = apiRef.current?.getSortedRowIds?.() || [];
                     
-                    if (!visibleRowIds || visibleRowIds.size === 0) {
+                    if (sortedRowIds.length === 0) {
                       alert("No rows to export");
                       return;
                     }
                     
-                    // Convert Map to array and export
-                    const rowsToExport: Row[] = [];
-                    visibleRowIds.forEach((row) => rowsToExport.push(row as Row));
+                    // Get the row data for each visible ID
+                    const rowsToExport: Row[] = sortedRowIds
+                      .map((id: string | number) => apiRef.current?.getRow?.(id))
+                      .filter((row: Row | undefined): row is Row => row !== undefined && row !== null);
+                    
+                    if (rowsToExport.length === 0) {
+                      alert("No rows to export");
+                      return;
+                    }
                     
                     // Create CSV content with index
                     const csv = rowsToExport.map((r, idx) => 
-                      `${idx + 1},"${r.name}","${r.email || ''}","${r.phone || ''}","${r.address || ''}","${r.website || ''}"`
+                      `${idx + 1},"${(r.name || '').replace(/"/g, '""')}","${(r.email || '').replace(/"/g, '""')}","${(r.phone || '').replace(/"/g, '""')}","${(r.address || '').replace(/"/g, '""')}","${(r.website || '').replace(/"/g, '""')}"`
                     ).join('\n');
                     
                     const blob = new Blob([`Index,Name,Email,Phone,Address,Website\n${csv}`], { type: 'text/csv' });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `${niche?.name || 'contacts'}_filtered.csv`;
+                    a.download = `${niche?.name || 'contacts'}_filtered_${rowsToExport.length}.csv`;
                     a.click();
                     URL.revokeObjectURL(url);
                   };
