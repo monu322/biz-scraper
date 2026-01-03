@@ -751,15 +751,76 @@ Book here: https://calendly.com/john-neurosphere/30min`;
   // Search state for map view
   const [searchQuery, setSearchQuery] = useState("");
   
-  // Filter rows based on search query (for both table and map)
+  // "No Website" filter state
+  const [noWebsiteFilterActive, setNoWebsiteFilterActive] = useState(false);
+  
+  // DataGrid filter model state
+  const [filterModel, setFilterModel] = useState<{ items: any[] }>({ items: [] });
+  
+  // Helper to apply a single filter item to a row
+  const applyFilterItem = (row: Row, filter: any): boolean => {
+    const value = row[filter.field as keyof Row];
+    const filterValue = filter.value;
+    
+    if (filterValue === undefined || filterValue === null || filterValue === '') return true;
+    
+    switch (filter.operator) {
+      case 'equals':
+        return value === filterValue;
+      case 'contains':
+        return String(value || '').toLowerCase().includes(String(filterValue).toLowerCase());
+      case 'startsWith':
+        return String(value || '').toLowerCase().startsWith(String(filterValue).toLowerCase());
+      case 'endsWith':
+        return String(value || '').toLowerCase().endsWith(String(filterValue).toLowerCase());
+      case 'isEmpty':
+        return !value || value === '';
+      case 'isNotEmpty':
+        return value !== null && value !== undefined && value !== '';
+      case '=':
+        return Number(value) === Number(filterValue);
+      case '!=':
+        return Number(value) !== Number(filterValue);
+      case '>':
+        return Number(value) > Number(filterValue);
+      case '>=':
+        return Number(value) >= Number(filterValue);
+      case '<':
+        return Number(value) < Number(filterValue);
+      case '<=':
+        return Number(value) <= Number(filterValue);
+      default:
+        return true;
+    }
+  };
+  
+  // Filter rows based on search query, "No Website" filter, AND DataGrid filters
   const filteredRows = useMemo(() => {
-    if (!searchQuery) return rows;
-    const query = searchQuery.toLowerCase();
-    return rows.filter(r => 
-      r.name.toLowerCase().includes(query) ||
-      r.email?.toLowerCase().includes(query)
-    );
-  }, [rows, searchQuery]);
+    let result = rows;
+    
+    // Apply search query filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(r => 
+        r.name.toLowerCase().includes(query) ||
+        r.email?.toLowerCase().includes(query)
+      );
+    }
+    
+    // Apply "No Website" filter
+    if (noWebsiteFilterActive) {
+      result = result.filter(r => r.email === "No website");
+    }
+    
+    // Apply DataGrid filter model
+    if (filterModel.items && filterModel.items.length > 0) {
+      result = result.filter(row => 
+        filterModel.items.every(filter => applyFilterItem(row, filter))
+      );
+    }
+    
+    return result;
+  }, [rows, searchQuery, noWebsiteFilterActive, filterModel]);
 
   // Filter map rows based on search query
   const filteredMapRows = useMemo(() => {
@@ -1369,67 +1430,15 @@ Book here: https://calendly.com/john-neurosphere/30min`;
               slotProps={{ panel: { className: "mt-1!" }, main: { className: "min-h-[600px]!" } }}
               slots={{
                 toolbar: function CustomToolbar() {
-                  // State for "No website" filter toggle
-                  const [noWebsiteFilter, setNoWebsiteFilter] = useState(false);
-                  
-                  // Toggle "No website" filter
-                  const handleNoWebsiteFilter = () => {
-                    setNoWebsiteFilter(!noWebsiteFilter);
-                    if (!noWebsiteFilter) {
-                      // Apply filter for "No website" (email = "No website")
-                      apiRef.current?.setFilterModel({
-                        items: [{ field: 'email', operator: 'equals', value: 'No website' }],
-                      });
-                    } else {
-                      // Clear filter
-                      apiRef.current?.setFilterModel({ items: [] });
-                    }
-                  };
-                  
-                  // Get filtered/sorted rows from the grid API for export
+                  // Export filtered rows - just use filteredRows state directly!
                   const handleExportCsv = () => {
-                    // Get the current filter model
-                    const filterModel = apiRef.current?.getFilterModel?.();
-                    
-                    // Start with all rows from filteredRows (which already handles search)
-                    let rowsToExport = [...filteredRows];
-                    
-                    // Apply DataGrid filters if any
-                    if (filterModel?.items && filterModel.items.length > 0) {
-                      rowsToExport = rowsToExport.filter(row => {
-                        return filterModel.items.every((filter: any) => {
-                          const value = row[filter.field as keyof Row];
-                          const filterValue = filter.value;
-                          
-                          if (!filterValue) return true;
-                          
-                          switch (filter.operator) {
-                            case 'equals':
-                              return value === filterValue;
-                            case 'contains':
-                              return String(value || '').toLowerCase().includes(String(filterValue).toLowerCase());
-                            case 'startsWith':
-                              return String(value || '').toLowerCase().startsWith(String(filterValue).toLowerCase());
-                            case 'endsWith':
-                              return String(value || '').toLowerCase().endsWith(String(filterValue).toLowerCase());
-                            case 'isEmpty':
-                              return !value || value === '';
-                            case 'isNotEmpty':
-                              return value && value !== '';
-                            default:
-                              return true;
-                          }
-                        });
-                      });
-                    }
-                    
-                    if (rowsToExport.length === 0) {
+                    if (filteredRows.length === 0) {
                       alert("No rows to export");
                       return;
                     }
                     
                     // Create CSV content with index
-                    const csv = rowsToExport.map((r, idx) => 
+                    const csv = filteredRows.map((r, idx) => 
                       `${idx + 1},"${(r.name || '').replace(/"/g, '""')}","${(r.email || '').replace(/"/g, '""')}","${(r.phone || '').replace(/"/g, '""')}","${(r.address || '').replace(/"/g, '""')}","${(r.website || '').replace(/"/g, '""')}"`
                     ).join('\n');
                     
@@ -1437,7 +1446,7 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `${niche?.name || 'contacts'}_filtered_${rowsToExport.length}.csv`;
+                    a.download = `${niche?.name || 'contacts'}_filtered_${filteredRows.length}.csv`;
                     a.click();
                     URL.revokeObjectURL(url);
                   };
@@ -1465,9 +1474,9 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                           <Button 
                             className="surface-standard flex-none" 
                             size="medium" 
-                            color={noWebsiteFilter ? "primary" : "grey"}
-                            variant={noWebsiteFilter ? "contained" : "surface"}
-                            onClick={handleNoWebsiteFilter}
+                            color={noWebsiteFilterActive ? "primary" : "grey"}
+                            variant={noWebsiteFilterActive ? "contained" : "surface"}
+                            onClick={() => setNoWebsiteFilterActive(!noWebsiteFilterActive)}
                           >
                             🌐 No Website
                           </Button>
@@ -1512,6 +1521,7 @@ Book here: https://calendly.com/john-neurosphere/30min`;
               }}
               rowSelectionModel={rowSelectionModel}
               onRowSelectionModelChange={(model) => setRowSelectionModel(model)}
+              onFilterModelChange={(model) => setFilterModel(model)}
               hideFooterSelectedRowCount
             />
           </Grid>
