@@ -748,10 +748,6 @@ Book here: https://calendly.com/john-neurosphere/30min`;
     },
   ];
 
-  // State for export menu
-  const [anchorElExport, setAnchorElExport] = useState<EventTarget | Element | PopoverVirtualElement | null>(null);
-  const openExport = Boolean(anchorElExport);
-
   // Search state for map view
   const [searchQuery, setSearchQuery] = useState("");
   
@@ -833,49 +829,6 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                 <NiBinEmpty size={"medium"} />
               </Button>
             </Tooltip>
-
-            {viewMode === "table" && (
-              <>
-                <Tooltip title="Columns">
-                  <Button 
-                    className="icon-only surface-standard" 
-                    size="medium" 
-                    color="grey" 
-                    variant="surface" 
-                    onClick={() => apiRef.current?.showPreferences?.('columns')}
-                  >
-                    <NiCols size={"medium"} />
-                  </Button>
-                </Tooltip>
-
-                <Tooltip title="Filters">
-                  <Button 
-                    className="icon-only surface-standard" 
-                    size="medium" 
-                    color="grey" 
-                    variant="surface" 
-                    onClick={() => apiRef.current?.showFilterPanel?.()}
-                  >
-                    <NiFilter size={"medium"} />
-                  </Button>
-                </Tooltip>
-              </>
-            )}
-
-            <Tooltip title="Export">
-              <Button className="icon-only surface-standard" size="medium" color="grey" variant="surface" startIcon={<NiArrowInDown size={"medium"} />} onClick={(e) => setAnchorElExport(e.currentTarget)} />
-            </Tooltip>
-
-            <Menu anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }} anchorEl={anchorElExport as Element} open={openExport} onClose={() => setAnchorElExport(null)} className="mt-1">
-              <MenuItem onClick={() => { window.print(); setAnchorElExport(null); }}><ListItemIcon><NiPrinter size="medium" /></ListItemIcon><ListItemText>Print</ListItemText></MenuItem>
-              <MenuItem onClick={() => { 
-                const csv = rows.map(r => `"${r.name}","${r.email || ''}","${r.phone || ''}","${r.address || ''}","${r.website || ''}"`).join('\n');
-                const blob = new Blob([`Name,Email,Phone,Address,Website\n${csv}`], { type: 'text/csv' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = 'contacts.csv'; a.click();
-                setAnchorElExport(null);
-              }}><ListItemIcon><NiDocumentFull size="medium" /></ListItemIcon><ListItemText>Export CSV</ListItemText></MenuItem>
-            </Menu>
           </Grid>
         </Grid>
 
@@ -1416,6 +1369,34 @@ Book here: https://calendly.com/john-neurosphere/30min`;
               slotProps={{ panel: { className: "mt-1!" }, main: { className: "min-h-[600px]!" } }}
               slots={{
                 toolbar: function CustomToolbar() {
+                  // Get filtered/sorted rows from the grid API
+                  const handleExportCsv = () => {
+                    // Get the current filtered rows from the apiRef
+                    const filteredSortedRowIds = apiRef.current?.state?.sorting?.sortedRows || [];
+                    const rowsMap = apiRef.current?.state?.rows?.dataRowIdToModelLookup || {};
+                    
+                    // Get the actual row data in sorted/filtered order
+                    const exportRows: Row[] = filteredSortedRowIds
+                      .map((id: string | number) => rowsMap[id])
+                      .filter(Boolean);
+                    
+                    // If no filtered rows, use filteredRows from state
+                    const rowsToExport = exportRows.length > 0 ? exportRows : filteredRows;
+                    
+                    // Create CSV content
+                    const csv = rowsToExport.map(r => 
+                      `"${r.name}","${r.email || ''}","${r.phone || ''}","${r.address || ''}","${r.website || ''}"`
+                    ).join('\n');
+                    
+                    const blob = new Blob([`Name,Email,Phone,Address,Website\n${csv}`], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${niche?.name || 'contacts'}_filtered.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  };
+                  
                   return (
                     <Toolbar className="mb-4">
                       <Box className="flex items-center gap-2">
@@ -1434,6 +1415,17 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                               </Badge>
                             </Button>
                           )} />
+                        </Tooltip>
+                        <Tooltip title="Export CSV (filtered)">
+                          <Button 
+                            className="icon-only surface-standard flex-none" 
+                            size="medium" 
+                            color="grey" 
+                            variant="surface"
+                            onClick={handleExportCsv}
+                          >
+                            <NiArrowInDown size={"medium"} />
+                          </Button>
                         </Tooltip>
                       </Box>
                     </Toolbar>
