@@ -694,7 +694,7 @@ Book here: https://calendly.com/john-neurosphere/30min`;
     {
       field: "rating",
       headerName: "Rating",
-      width: 120,
+      width: 100,
       type: "number",
       renderCell: (params: GridRenderCellParams<any, number>) => {
         if (params.value) {
@@ -702,6 +702,23 @@ Book here: https://calendly.com/john-neurosphere/30min`;
             <Box className="flex h-full items-center gap-1.5">
               <span className="text-base leading-none">⭐</span>
               <Typography variant="body2" className="leading-none">{params.value.toFixed(1)}</Typography>
+            </Box>
+          );
+        }
+        return null;
+      },
+    },
+    {
+      field: "reviewsCount",
+      headerName: "Reviews",
+      width: 100,
+      type: "number",
+      renderCell: (params: GridRenderCellParams<any, number>) => {
+        if (params.value !== null && params.value !== undefined) {
+          return (
+            <Box className="flex h-full items-center gap-1.5">
+              <span className="text-base leading-none">💬</span>
+              <Typography variant="body2" className="leading-none">{params.value}</Typography>
             </Box>
           );
         }
