@@ -470,6 +470,106 @@ async def enrich_niche_emails(niche_id: int):
         )
 
 
+@app.get("/api/niches/{niche_id}/scrape/stream")
+async def scrape_niche_contacts_stream(niche_id: int, keyword: str, location: str, limit: int = 20):
+    """
+    Stream scraping progress using Server-Sent Events (SSE).
+    Returns real-time progress updates as JSON events.
+    
+    Query parameters:
+    - keyword: Search keyword
+    - location: Location to search
+    - limit: Number of results (default: 20)
+    """
+    # Verify niche exists first
+    niche = await db.get_niche_by_id(niche_id)
+    if not niche:
+        raise HTTPException(status_code=404, detail="Niche not found")
+    
+    async def event_generator():
+        contacts_to_save = []
+        run_id = None
+        
+        try:
+            async for progress in scraper.scrape_google_maps_streaming(keyword, location, limit):
+                # When complete, save all contacts to database
+                if progress["type"] == "complete" and "contacts" in progress:
+                    contacts_to_save = progress["contacts"]
+                    run_id = progress.get("run_id")
+                    
+                    # Set niche_id for all contacts
+                    for contact in contacts_to_save:
+                        contact.niche_id = niche_id
+                    
+                    # Yield saving status
+                    yield f"data: {json.dumps({'type': 'saving', 'message': 'Saving contacts to database...', 'total': len(contacts_to_save), 'processed': 0, 'current': None})}\n\n"
+                    
+                    # Save contacts one by one with progress updates
+                    new_count = 0
+                    updated_count = 0
+                    saved_contacts = []
+                    
+                    for i, contact in enumerate(contacts_to_save):
+                        # Upsert single contact
+                        result = await db.upsert_contacts_batch([contact])
+                        new_count += result.get("new_count", 0)
+                        updated_count += result.get("updated_count", 0)
+                        
+                        saved_contacts.append({
+                            "name": contact.name,
+                            "email": contact.email,
+                            "phone": contact.phone,
+                            "is_new": result.get("new_count", 0) > 0
+                        })
+                        
+                        # Yield progress for each saved contact
+                        save_progress = {
+                            "type": "saved",
+                            "message": f"Saved {i + 1}/{len(contacts_to_save)}",
+                            "total": len(contacts_to_save),
+                            "processed": i + 1,
+                            "current": contact.name,
+                            "saved_contacts": saved_contacts
+                        }
+                        yield f"data: {json.dumps(save_progress)}\n\n"
+                        await asyncio.sleep(0.05)  # Small delay for UI updates
+                    
+                    # Final complete message
+                    final_progress = {
+                        "type": "complete",
+                        "message": f"Scraped and saved {len(contacts_to_save)} contacts ({new_count} new, {updated_count} updated)",
+                        "total": len(contacts_to_save),
+                        "processed": len(contacts_to_save),
+                        "current": None,
+                        "new_count": new_count,
+                        "updated_count": updated_count,
+                        "saved_contacts": saved_contacts,
+                        "run_id": run_id
+                    }
+                    yield f"data: {json.dumps(final_progress)}\n\n"
+                else:
+                    # Forward other progress events
+                    # Remove contacts from progress to avoid large payloads
+                    progress_to_send = {k: v for k, v in progress.items() if k != "contacts"}
+                    yield f"data: {json.dumps(progress_to_send)}\n\n"
+                
+                await asyncio.sleep(0.1)
+                
+        except Exception as e:
+            error_data = {"type": "error", "message": str(e)}
+            yield f"data: {json.dumps(error_data)}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
 @app.get("/api/niches/{niche_id}/enrich-emails/stream")
 async def enrich_niche_emails_stream(niche_id: int):
     """

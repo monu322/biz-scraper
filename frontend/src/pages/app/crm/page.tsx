@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { apiUrl } from "@/lib/api";
 
 import {
   Box,
@@ -46,7 +47,7 @@ export default function Page() {
   const fetchNiches = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("http://localhost:8000/api/niches");
+      const response = await fetch(apiUrl("/api/niches"));
       if (!response.ok) {
         throw new Error("Failed to fetch niches");
       }
@@ -73,7 +74,7 @@ export default function Page() {
         .map((l) => l.trim())
         .filter((l) => l.length > 0);
 
-      const response = await fetch("http://localhost:8000/api/niches", {
+      const response = await fetch(apiUrl("/api/niches"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -105,7 +106,7 @@ export default function Page() {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/niches/${nicheId}`, {
+      const response = await fetch(apiUrl(`/api/niches/${nicheId}`), {
         method: "DELETE",
       });
 

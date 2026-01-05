@@ -3,6 +3,7 @@ import duration from "dayjs/plugin/duration";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { MouseEvent, useCallback, useEffect, useState, useMemo } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
+import { apiUrl, apiEventSource } from "@/lib/api";
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -256,6 +257,18 @@ export default function NicheDetailPage() {
     enriched_count?: number;
     skipped_count?: number;
   } | null>(null);
+
+  // Scrape progress state
+  const [scrapeProgress, setScrapeProgress] = useState<{
+    total: number;
+    processed: number;
+    current: string | null;
+    message: string;
+    type: string;
+    saved_contacts?: Array<{ name: string; email: string | null; phone: string | null; is_new: boolean }>;
+    new_count?: number;
+    updated_count?: number;
+  } | null>(null);
   
   // Handle sending WhatsApp via Twilio
   const handleSendWhatsApp = async () => {
@@ -263,7 +276,7 @@ export default function NicheDetailPage() {
     
     setSendingSms(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/contacts/${selectedContactForAction.id}/send-whatsapp`, {
+      const response = await fetch(apiUrl(`/api/contacts/${selectedContactForAction.id}/send-whatsapp`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: smsMessage }),
@@ -316,7 +329,7 @@ export default function NicheDetailPage() {
   const fetchNiche = useCallback(async () => {
     if (!nicheId) return;
     try {
-      const response = await fetch(`http://localhost:8000/api/niches/${nicheId}`);
+      const response = await fetch(apiUrl(`/api/niches/${nicheId}`));
       if (!response.ok) {
         throw new Error("Failed to fetch niche");
       }
@@ -335,7 +348,7 @@ export default function NicheDetailPage() {
     setLoading(true);
     try {
       // Fetch all contacts (increase limit to 1000)
-      const response = await fetch(`http://localhost:8000/api/niches/${nicheId}/contacts?limit=1000`);
+      const response = await fetch(apiUrl(`/api/niches/${nicheId}/contacts?limit=1000`));
       if (!response.ok) {
         throw new Error("Failed to fetch contacts");
       }
@@ -400,30 +413,61 @@ export default function NicheDetailPage() {
 
   const handleScrapeSubmit = async () => {
     setScraping(true);
+    setScrapeProgress({ total: parseInt(scrapeLimit) || 20, processed: 0, current: null, message: "🔄 Connecting to server...", type: "start" });
+    
     try {
-      const response = await fetch(`http://localhost:8000/api/niches/${nicheId}/scrape`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          keyword: scrapeKeyword,
-          location: scrapeLocation,
-          limit: parseInt(scrapeLimit) || 20,
-        }),
+      // Use SSE endpoint for real-time progress
+      const params = new URLSearchParams({
+        keyword: scrapeKeyword,
+        location: scrapeLocation,
+        limit: String(parseInt(scrapeLimit) || 20),
       });
-
-      if (!response.ok) throw new Error("Failed to scrape data");
-
-      const data = await response.json();
-      console.log("Scrape successful:", data);
       
-      await fetchContacts();
-      await fetchNiche();
-      handleScrapeClose();
+      console.log("🔍 Starting SSE connection for scraping...");
+      const eventSource = apiEventSource(`/api/niches/${nicheId}/scrape/stream?${params}`);
+      
+      eventSource.onopen = () => {
+        console.log("✅ SSE connection opened");
+      };
+      
+      eventSource.onmessage = async (event) => {
+        console.log("📩 SSE message received:", event.data);
+        const data = JSON.parse(event.data);
+        setScrapeProgress(data);
+        
+        // If complete or error, close the connection
+        if (data.type === "complete" || data.type === "error") {
+          console.log("🏁 Scraping finished:", data.type);
+          eventSource.close();
+          setScraping(false);
+          
+          if (data.type === "complete") {
+            // Refresh contacts and niche data (this will also update the map)
+            await fetchContacts();
+            await fetchNiche();
+            
+            // Auto-close dialog after 2 seconds and show success message
+            setTimeout(() => {
+              setScrapeDialogOpen(false);
+              setScrapeProgress(null);
+              setScrapeKeyword("");
+              setScrapeLocation("");
+            }, 2000);
+          }
+        }
+      };
+      
+      eventSource.onerror = (err) => {
+        console.error("❌ SSE error:", err);
+        eventSource.close();
+        setScraping(false);
+        setScrapeProgress(prev => prev ? { ...prev, type: "error", message: "Connection lost. Check if backend is running." } : null);
+      };
+      
     } catch (error) {
       console.error("Scraping error:", error);
-      alert("Failed to scrape data.");
-    } finally {
       setScraping(false);
+      setScrapeProgress(prev => prev ? { ...prev, type: "error", message: String(error) } : null);
     }
   };
 
@@ -436,7 +480,7 @@ export default function NicheDetailPage() {
     
     try {
       // Use SSE endpoint for real-time progress
-      const eventSource = new EventSource(`http://localhost:8000/api/niches/${nicheId}/enrich-emails/stream`);
+      const eventSource = apiEventSource(`/api/niches/${nicheId}/enrich-emails/stream`);
       
       eventSource.onmessage = async (event) => {
         const data = JSON.parse(event.data);
@@ -468,7 +512,7 @@ export default function NicheDetailPage() {
     
     setResetting(true);
     try {
-      const response = await fetch("http://localhost:8000/api/reset-na-emails", {
+      const response = await fetch(apiUrl("/api/reset-na-emails"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -491,7 +535,7 @@ export default function NicheDetailPage() {
     
     setDeleting(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/niches/${nicheId}/contacts`, {
+      const response = await fetch(apiUrl(`/api/niches/${nicheId}/contacts`), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
       });
@@ -515,7 +559,7 @@ export default function NicheDetailPage() {
     
     setClearing(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/niches/${nicheId}/clear-emails`, {
+      const response = await fetch(apiUrl(`/api/niches/${nicheId}/clear-emails`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -544,7 +588,7 @@ export default function NicheDetailPage() {
     setUpdatingStatus(true);
     try {
       const newStatus = action === "call" ? "Website call made" : "Website SMS sent";
-      const response = await fetch(`http://localhost:8000/api/contacts/${selectedContactForAction.id}/add-status`, {
+      const response = await fetch(apiUrl(`/api/contacts/${selectedContactForAction.id}/add-status`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
@@ -771,8 +815,76 @@ Book here: https://calendly.com/john-neurosphere/30min`;
   // "No Website" filter state
   const [noWebsiteFilterActive, setNoWebsiteFilterActive] = useState(false);
   
+  // "Has Email" filter state
+  const [hasEmailFilterActive, setHasEmailFilterActive] = useState(false);
+  
   // DataGrid filter model state
   const [filterModel, setFilterModel] = useState<{ items: any[] }>({ items: [] });
+  
+  // Custom filter dialog state (works in both views)
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  const [customFilters, setCustomFilters] = useState<Array<{ id: string; field: string; operator: string; value: string }>>([]);
+  const [tempFilter, setTempFilter] = useState<{ field: string; operator: string; value: string }>({ field: "name", operator: "contains", value: "" });
+  const [filterLogic, setFilterLogic] = useState<"AND" | "OR">("AND");
+  
+  // Filter field options
+  const filterFields = [
+    { value: "name", label: "Name", type: "string" },
+    { value: "email", label: "Email", type: "string" },
+    { value: "phone", label: "Phone", type: "string" },
+    { value: "address", label: "Address", type: "string" },
+    { value: "website", label: "Website", type: "string" },
+    { value: "rating", label: "Rating", type: "number" },
+    { value: "reviewsCount", label: "Reviews Count", type: "number" },
+    { value: "status", label: "Status", type: "string" },
+    { value: "category", label: "Category", type: "string" },
+  ];
+  
+  // Get operators based on field type
+  const getOperatorsForField = (fieldName: string) => {
+    const field = filterFields.find(f => f.value === fieldName);
+    if (field?.type === "number") {
+      return [
+        { value: "=", label: "equals" },
+        { value: "!=", label: "not equals" },
+        { value: ">", label: "greater than" },
+        { value: ">=", label: "greater than or equal" },
+        { value: "<", label: "less than" },
+        { value: "<=", label: "less than or equal" },
+      ];
+    }
+    return [
+      { value: "contains", label: "contains" },
+      { value: "equals", label: "equals" },
+      { value: "startsWith", label: "starts with" },
+      { value: "endsWith", label: "ends with" },
+      { value: "isEmpty", label: "is empty" },
+      { value: "isNotEmpty", label: "is not empty" },
+    ];
+  };
+  
+  // Add a new filter
+  const handleAddFilter = () => {
+    if (tempFilter.operator === "isEmpty" || tempFilter.operator === "isNotEmpty" || tempFilter.value.trim()) {
+      const newFilter = {
+        id: Date.now().toString(),
+        ...tempFilter,
+      };
+      setCustomFilters([...customFilters, newFilter]);
+      setTempFilter({ field: "name", operator: "contains", value: "" });
+    }
+  };
+  
+  // Remove a filter
+  const handleRemoveFilter = (filterId: string) => {
+    setCustomFilters(customFilters.filter(f => f.id !== filterId));
+  };
+  
+  // Clear all custom filters
+  const handleClearAllFilters = () => {
+    setCustomFilters([]);
+    setFilterModel({ items: [] });
+  };
   
   // Helper to apply a single filter item to a row
   const applyFilterItem = (row: Row, filter: any): boolean => {
@@ -829,6 +941,12 @@ Book here: https://calendly.com/john-neurosphere/30min`;
       result = result.filter(r => r.email === "No website");
     }
     
+    // Apply "Has Email" filter - only show contacts with valid emails
+    if (hasEmailFilterActive) {
+      const invalidEmails = ["no email found", "No website", "website error", "N/A", null, undefined, ""];
+      result = result.filter(r => r.email && !invalidEmails.includes(r.email) && r.email.includes("@"));
+    }
+    
     // Apply DataGrid filter model
     if (filterModel.items && filterModel.items.length > 0) {
       result = result.filter(row => 
@@ -836,8 +954,21 @@ Book here: https://calendly.com/john-neurosphere/30min`;
       );
     }
     
+    // Apply custom filters (works in both views) with AND/OR logic
+    if (customFilters.length > 0) {
+      if (filterLogic === "AND") {
+        result = result.filter(row => 
+          customFilters.every(filter => applyFilterItem(row, filter))
+        );
+      } else {
+        result = result.filter(row => 
+          customFilters.some(filter => applyFilterItem(row, filter))
+        );
+      }
+    }
+    
     return result;
-  }, [rows, searchQuery, noWebsiteFilterActive, filterModel]);
+  }, [rows, searchQuery, noWebsiteFilterActive, hasEmailFilterActive, filterModel, customFilters, filterLogic]);
 
   // Filter map rows - apply same filters as filteredRows but only those with coordinates
   const filteredMapRows = useMemo(() => {
@@ -1252,19 +1383,266 @@ Book here: https://calendly.com/john-neurosphere/30min`;
         </DialogActions>
       </Dialog>
 
-      <Dialog open={scrapeDialogOpen} onClose={handleScrapeClose} maxWidth="sm" fullWidth>
-        <DialogTitle>{scraping ? "Scraping..." : `Scrape for ${niche?.name}`}</DialogTitle>
+      <Dialog open={scrapeDialogOpen} onClose={() => !scraping && handleScrapeClose()} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box className="flex items-center gap-2">
+            <span className="text-2xl">🔍</span>
+            <span>{scraping ? "Scraping Contacts..." : `Scrape for ${niche?.name}`}</span>
+          </Box>
+        </DialogTitle>
         <DialogContent>
           <Box className="flex flex-col gap-4 pt-2">
-            <TextField label="Keyword" variant="outlined" fullWidth value={scrapeKeyword} onChange={(e) => setScrapeKeyword(e.target.value)} placeholder="e.g., hvac, restaurants, plumbers" disabled={scraping} />
-            <TextField label="Location" variant="outlined" fullWidth value={scrapeLocation} onChange={(e) => setScrapeLocation(e.target.value)} placeholder="e.g., London, New York" disabled={scraping} />
-            <TextField label="Number of Records" variant="outlined" fullWidth type="number" value={scrapeLimit} onChange={(e) => setScrapeLimit(e.target.value)} inputProps={{ min: 1, max: 50 }} helperText="1-50 records" disabled={scraping} />
-            {scraping && <Box className="flex items-center justify-center gap-2 py-4"><Typography variant="body2" color="text.secondary">Scraping data, please wait...</Typography></Box>}
+            {/* Input fields - hidden when scraping */}
+            {!scraping && (
+              <>
+                <TextField label="Keyword" variant="outlined" fullWidth value={scrapeKeyword} onChange={(e) => setScrapeKeyword(e.target.value)} placeholder="e.g., hvac, restaurants, plumbers" disabled={scraping} />
+                <TextField label="Location" variant="outlined" fullWidth value={scrapeLocation} onChange={(e) => setScrapeLocation(e.target.value)} placeholder="e.g., London, New York" disabled={scraping} />
+                <TextField label="Number of Records" variant="outlined" fullWidth type="number" value={scrapeLimit} onChange={(e) => setScrapeLimit(e.target.value)} inputProps={{ min: 1, max: 500 }} helperText="1-500 records" disabled={scraping} />
+              </>
+            )}
+
+                {/* Scraping Progress */}
+            {scraping && scrapeProgress && (
+              <>
+                {/* Progress Bar */}
+                <Box>
+                  <Box className="mb-2 flex items-center justify-between">
+                    <Typography variant="body2" className="text-text-secondary">
+                      {scrapeProgress.type === "complete" ? "✅ Complete!" : 
+                       scrapeProgress.type === "error" ? "❌ Error" : 
+                       scrapeProgress.type === "scraping" ? "🔍 Scraping Google Maps..." : 
+                       scrapeProgress.type === "saving" ? "💾 Saving contacts..." : 
+                       scrapeProgress.type === "processing" ? "📥 Processing..." : "🚀 Starting..."}
+                    </Typography>
+                    <Typography variant="body2" className="font-medium">
+                      {scrapeProgress.processed} / {scrapeProgress.total}
+                    </Typography>
+                  </Box>
+                  <LinearProgress 
+                    variant={scrapeProgress.type === "start" ? "indeterminate" : "determinate"}
+                    value={scrapeProgress.total > 0 ? (scrapeProgress.processed / scrapeProgress.total) * 100 : 0}
+                    color={scrapeProgress.type === "complete" ? "success" : scrapeProgress.type === "error" ? "error" : "primary"}
+                  />
+                </Box>
+
+                {/* Current status message */}
+                {scrapeProgress.type !== "complete" && scrapeProgress.type !== "error" && (
+                  <Box className="rounded-lg bg-blue-50 border border-blue-200 p-3">
+                    <Typography variant="body2" className="text-blue-700">
+                      {scrapeProgress.message}
+                    </Typography>
+                    {scrapeProgress.current && (
+                      <Typography variant="caption" className="text-blue-600 block mt-1">
+                        Current: {scrapeProgress.current}
+                      </Typography>
+                    )}
+                  </Box>
+                )}
+
+                {/* Saved contacts list - show as they come in */}
+                {scrapeProgress.saved_contacts && scrapeProgress.saved_contacts.length > 0 && (
+                  <Box className="rounded-lg bg-grey-50 border border-grey-200 p-3 max-h-60 overflow-y-auto">
+                    <Typography variant="caption" className="text-text-secondary mb-2 block">Contacts saved:</Typography>
+                    <Box className="flex flex-col gap-1">
+                      {scrapeProgress.saved_contacts.map((contact, idx) => (
+                        <Box key={idx} className="flex items-center gap-2">
+                          <span className="text-green-500 text-lg">✓</span>
+                          <Typography variant="body2" className="font-medium">{contact.name}</Typography>
+                          {contact.is_new && (
+                            <Button size="tiny" color="success" variant="pastel" className="pointer-events-none ml-auto">NEW</Button>
+                          )}
+                        </Box>
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+
+                {/* Completion Summary */}
+                {scrapeProgress.type === "complete" && (
+                  <Box className="rounded-lg bg-green-50 border border-green-200 p-4">
+                    <Typography variant="subtitle1" className="font-bold text-green-800 mb-2">✅ Scraping Complete!</Typography>
+                    <Typography variant="body2" className="text-green-700 mb-3">{scrapeProgress.message}</Typography>
+                    <Box className="flex flex-wrap gap-4">
+                      <Box>
+                        <Typography variant="caption" className="text-green-700">New</Typography>
+                        <Typography variant="h6" className="text-green-800 font-bold">{scrapeProgress.new_count || 0}</Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" className="text-grey-600">Updated</Typography>
+                        <Typography variant="h6" className="text-grey-700">{scrapeProgress.updated_count || 0}</Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" className="text-grey-600">Total</Typography>
+                        <Typography variant="h6" className="text-grey-700">{scrapeProgress.total}</Typography>
+                      </Box>
+                    </Box>
+                  </Box>
+                )}
+
+                {/* Error Message */}
+                {scrapeProgress.type === "error" && (
+                  <Box className="rounded-lg bg-red-50 border border-red-200 p-4">
+                    <Typography variant="subtitle1" className="font-bold text-red-800 mb-1">❌ Error</Typography>
+                    <Typography variant="body2" className="text-red-700">{scrapeProgress.message}</Typography>
+                  </Box>
+                )}
+              </>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleScrapeClose} color="grey" variant="text" disabled={scraping}>Cancel</Button>
-          <Button onClick={handleScrapeSubmit} color="primary" variant="contained" disabled={!scrapeKeyword || !scrapeLocation || scraping}>{scraping ? "Scraping..." : "Scrape"}</Button>
+          {!scraping ? (
+            <>
+              <Button onClick={handleScrapeClose} color="grey" variant="text">Cancel</Button>
+              <Button onClick={handleScrapeSubmit} color="primary" variant="contained" disabled={!scrapeKeyword || !scrapeLocation}>{scraping ? "Scraping..." : "Scrape"}</Button>
+            </>
+          ) : scrapeProgress?.type === "complete" || scrapeProgress?.type === "error" ? (
+            <Button onClick={handleScrapeClose} color="primary" variant="contained">Done</Button>
+          ) : (
+            <Button disabled color="grey" variant="text">Processing...</Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Custom Filter Dialog - Works in both Table and Map views */}
+      <Dialog open={filterDialogOpen} onClose={() => setFilterDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box className="flex items-center gap-2">
+            <NiFilter size="medium" />
+            <span>Advanced Filters</span>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box className="flex flex-col gap-4 pt-2">
+            {/* Add New Filter */}
+            <Box className="rounded-lg border border-grey-200 bg-grey-50 p-4">
+              <Typography variant="subtitle2" className="mb-3">Add Filter</Typography>
+              <Box className="flex flex-col gap-3">
+                <FormControl variant="outlined" size="small" fullWidth>
+                  <InputLabel>Field</InputLabel>
+                  <Select
+                    value={tempFilter.field}
+                    onChange={(e) => {
+                      const newField = e.target.value as string;
+                      const operators = getOperatorsForField(newField);
+                      setTempFilter({ 
+                        ...tempFilter, 
+                        field: newField, 
+                        operator: operators[0].value 
+                      });
+                    }}
+                    label="Field"
+                  >
+                    {filterFields.map(field => (
+                      <MenuItem key={field.value} value={field.value}>{field.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl variant="outlined" size="small" fullWidth>
+                  <InputLabel>Operator</InputLabel>
+                  <Select
+                    value={tempFilter.operator}
+                    onChange={(e) => setTempFilter({ ...tempFilter, operator: e.target.value as string })}
+                    label="Operator"
+                  >
+                    {getOperatorsForField(tempFilter.field).map(op => (
+                      <MenuItem key={op.value} value={op.value}>{op.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                {tempFilter.operator !== "isEmpty" && tempFilter.operator !== "isNotEmpty" && (
+                  <TextField
+                    label="Value"
+                    variant="outlined"
+                    size="small"
+                    fullWidth
+                    type={filterFields.find(f => f.value === tempFilter.field)?.type === "number" ? "number" : "text"}
+                    value={tempFilter.value}
+                    onChange={(e) => setTempFilter({ ...tempFilter, value: e.target.value })}
+                    placeholder="Enter filter value..."
+                  />
+                )}
+                <Button 
+                  variant="contained" 
+                  color="primary" 
+                  onClick={handleAddFilter}
+                  disabled={tempFilter.operator !== "isEmpty" && tempFilter.operator !== "isNotEmpty" && !tempFilter.value.trim()}
+                  startIcon={<NiFilterPlus size="small" />}
+                >
+                  Add Filter
+                </Button>
+              </Box>
+            </Box>
+
+            {/* Active Filters */}
+            {customFilters.length > 0 && (
+              <Box>
+                <Box className="flex items-center justify-between mb-2">
+                  <Box className="flex items-center gap-2">
+                    <Typography variant="subtitle2">Active Filters ({customFilters.length})</Typography>
+                    {customFilters.length > 1 && (
+                      <ToggleButtonGroup
+                        value={filterLogic}
+                        exclusive
+                        onChange={(_e, value) => value && setFilterLogic(value)}
+                        size="small"
+                      >
+                        <ToggleButton value="AND" className="!px-2 !py-0.5 !text-xs">
+                          AND
+                        </ToggleButton>
+                        <ToggleButton value="OR" className="!px-2 !py-0.5 !text-xs">
+                          OR
+                        </ToggleButton>
+                      </ToggleButtonGroup>
+                    )}
+                  </Box>
+                  <Button 
+                    size="small" 
+                    color="error" 
+                    variant="text"
+                    onClick={handleClearAllFilters}
+                    startIcon={<NiBinEmpty size="small" />}
+                  >
+                    Clear All
+                  </Button>
+                </Box>
+                {customFilters.length > 1 && (
+                  <Typography variant="caption" className="text-text-secondary mb-2 block">
+                    {filterLogic === "AND" ? "Showing contacts that match ALL filters" : "Showing contacts that match ANY filter"}
+                  </Typography>
+                )}
+                <Box className="flex flex-col gap-2">
+                  {customFilters.map(filter => {
+                    const fieldLabel = filterFields.find(f => f.value === filter.field)?.label || filter.field;
+                    const operatorLabel = getOperatorsForField(filter.field).find(o => o.value === filter.operator)?.label || filter.operator;
+                    return (
+                      <Box key={filter.id} className="flex items-center gap-2 rounded-lg border border-grey-200 bg-white p-2">
+                        <Box className="flex-grow">
+                          <Typography variant="body2">
+                            <strong>{fieldLabel}</strong> {operatorLabel} {filter.operator !== "isEmpty" && filter.operator !== "isNotEmpty" && <span className="text-primary">"{filter.value}"</span>}
+                          </Typography>
+                        </Box>
+                        <IconButton size="small" onClick={() => handleRemoveFilter(filter.id)}>
+                          <NiCross size="small" />
+                        </IconButton>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </Box>
+            )}
+
+            {customFilters.length === 0 && (
+              <Box className="text-center py-4">
+                <Typography variant="body2" className="text-text-secondary">
+                  No filters applied. Add a filter above to narrow down results.
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setFilterDialogOpen(false)} color="grey" variant="text">Close</Button>
         </DialogActions>
       </Dialog>
 
@@ -1376,6 +1754,28 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                 🌐 No Website
               </Button>
             </Tooltip>
+            <Tooltip title="Filter: Has Email">
+              <Button 
+                className="surface-standard flex-none" 
+                size="medium" 
+                color={hasEmailFilterActive ? "success" : "grey"}
+                variant={hasEmailFilterActive ? "contained" : "surface"}
+                onClick={() => setHasEmailFilterActive(!hasEmailFilterActive)}
+              >
+                ✉️ Has Email
+              </Button>
+            </Tooltip>
+            <Tooltip title="Advanced Filters">
+              <Button 
+                className="icon-only surface-standard flex-none" 
+                size="medium" 
+                color={customFilters.length > 0 ? "primary" : "grey"}
+                variant={customFilters.length > 0 ? "contained" : "surface"}
+                onClick={() => setFilterDialogOpen(true)}
+              >
+                <NiFilter size={"medium"} />
+              </Button>
+            </Tooltip>
             <Tooltip title="Export CSV (filtered)">
               <Button 
                 className="icon-only surface-standard flex-none" 
@@ -1384,8 +1784,21 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                 variant="surface"
                 onClick={() => {
                   if (filteredRows.length === 0) { alert("No rows"); return; }
-                  const csv = filteredRows.map((r, i) => `${i+1},"${(r.name||'').replace(/"/g,'""')}","${(r.email||'').replace(/"/g,'""')}","${(r.phone||'').replace(/"/g,'""')}","${(r.address||'').replace(/"/g,'""')}","${(r.website||'').replace(/"/g,'""')}"`).join('\n');
-                  const blob = new Blob([`Index,Name,Email,Phone,Address,Website\n${csv}`], { type: 'text/csv' });
+                  // Helper function to generate Google Maps URL
+                  const getGoogleMapsUrl = (r: Row) => {
+                    if (r.placeId) {
+                      return `https://www.google.com/maps/place/?q=place_id:${r.placeId}`;
+                    } else if (r.googleMapsUrl) {
+                      return r.googleMapsUrl;
+                    } else {
+                      const searchQuery = r.address ? `${r.name}, ${r.address}` : r.name;
+                      return `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
+                    }
+                  };
+                  const csv = filteredRows.map((r, i) => 
+                    `${i+1},"${(r.name||'').replace(/"/g,'""')}","${(r.email||'').replace(/"/g,'""')}","${(r.phone||'').replace(/"/g,'""')}","${(r.address||'').replace(/"/g,'""')}","${(r.website||'').replace(/"/g,'""')}",${r.rating || ''},${r.reviewsCount || ''},"${getGoogleMapsUrl(r)}"`
+                  ).join('\n');
+                  const blob = new Blob([`Index,Name,Email,Phone,Address,Website,Rating,Reviews,GoogleMapsLink\n${csv}`], { type: 'text/csv' });
                   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${niche?.name || 'contacts'}_filtered_${filteredRows.length}.csv`; a.click();
                 }}
               >
@@ -1393,7 +1806,10 @@ Book here: https://calendly.com/john-neurosphere/30min`;
               </Button>
             </Tooltip>
             <Box className="flex-grow" />
-            <Typography variant="body2" className="text-text-secondary">{filteredRows.length} contacts</Typography>
+            <Typography variant="body2" className="text-text-secondary">
+              {filteredRows.length} contacts
+              {customFilters.length > 0 && ` (${customFilters.length} filter${customFilters.length > 1 ? 's' : ''} active)`}
+            </Typography>
           </Box>
         </Grid>
 
