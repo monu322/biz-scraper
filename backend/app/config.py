@@ -1,5 +1,7 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from functools import lru_cache
+from typing import List
 
 
 class Settings(BaseSettings):
@@ -25,14 +27,13 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     
-    # CORS Configuration
-    # Can be set via ALLOWED_ORIGINS env var as comma-separated list
-    # e.g., ALLOWED_ORIGINS=https://your-app.vercel.app,http://localhost:5173
-    allowed_origins: list[str] = [
-        "http://localhost:3001", 
-        "http://localhost:5173",
-        "http://localhost:3000",
-    ]
+    # CORS Configuration - stored as comma-separated string in env
+    allowed_origins: str = "http://localhost:3001,http://localhost:5173,http://localhost:3000"
+    
+    @property
+    def cors_origins(self) -> List[str]:
+        """Parse allowed_origins string into list."""
+        return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]
     
     class Config:
         env_file = ".env"
