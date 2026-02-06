@@ -22,11 +22,11 @@ class ScraperService:
         Args:
             keyword: Search keyword (e.g., "hvac", "restaurants")
             location: Location to search in (e.g., "London", "New York")
-            limit: Maximum number of results to scrape (default: 20, max: 500)
+            limit: Maximum number of results to scrape (default: 20, max: 1000)
         """
         try:
             # Ensure limit is within bounds
-            limit = max(1, min(limit, 500))
+            limit = max(1, min(limit, 5000))
             
             # Prepare the Actor input with email extraction (reviews disabled to save API credits)
             run_input = {
@@ -250,11 +250,11 @@ class ScraperService:
         Args:
             keyword: Search keyword (e.g., "hvac", "restaurants")
             location: Location to search in (e.g., "London", "New York")
-            limit: Maximum number of results to scrape (default: 20, max: 500)
+            limit: Maximum number of results to scrape (default: 20, max: 1000)
         """
         try:
             # Ensure limit is within bounds
-            limit = max(1, min(limit, 500))
+            limit = max(1, min(limit, 5000))
             
             # Yield start event
             yield {

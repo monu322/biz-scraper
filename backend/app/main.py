@@ -306,10 +306,11 @@ async def delete_niche(niche_id: int):
 
 
 @app.get("/api/niches/{niche_id}/contacts", response_model=List[ContactResponse])
-async def get_niche_contacts(niche_id: int, limit: int = 100, offset: int = 0):
-    """Get contacts for a specific niche."""
+async def get_niche_contacts(niche_id: int):
+    """Get ALL contacts for a specific niche (no limit, uses pagination internally)."""
     try:
-        contacts = await db.get_contacts_by_niche(niche_id, limit=limit, offset=offset)
+        # Use get_all_contacts_by_niche which properly paginates through ALL results
+        contacts = await db.get_all_contacts_by_niche(niche_id)
         return contacts
     except Exception as e:
         print(f"Error in get_niche_contacts: {e}")
@@ -504,35 +505,43 @@ async def scrape_niche_contacts_stream(niche_id: int, keyword: str, location: st
                     # Yield saving status
                     yield f"data: {json.dumps({'type': 'saving', 'message': 'Saving contacts to database...', 'total': len(contacts_to_save), 'processed': 0, 'current': None})}\n\n"
                     
-                    # Save contacts one by one with progress updates
+                    # Save contacts in batches for better performance
+                    BATCH_SIZE = 50
                     new_count = 0
                     updated_count = 0
                     saved_contacts = []
+                    total_processed = 0
                     
-                    for i, contact in enumerate(contacts_to_save):
-                        # Upsert single contact
-                        result = await db.upsert_contacts_batch([contact])
+                    for batch_start in range(0, len(contacts_to_save), BATCH_SIZE):
+                        batch_end = min(batch_start + BATCH_SIZE, len(contacts_to_save))
+                        batch = contacts_to_save[batch_start:batch_end]
+                        
+                        # Upsert batch of contacts
+                        result = await db.upsert_contacts_batch(batch)
                         new_count += result.get("new_count", 0)
                         updated_count += result.get("updated_count", 0)
+                        total_processed += len(batch)
                         
-                        saved_contacts.append({
-                            "name": contact.name,
-                            "email": contact.email,
-                            "phone": contact.phone,
-                            "is_new": result.get("new_count", 0) > 0
-                        })
+                        # Add batch to saved_contacts summary (just names for UI)
+                        for contact in batch:
+                            saved_contacts.append({
+                                "name": contact.name,
+                                "email": contact.email,
+                                "phone": contact.phone,
+                                "is_new": True  # Approximate, batch doesn't give per-contact info
+                            })
                         
-                        # Yield progress for each saved contact
+                        # Yield progress for batch
                         save_progress = {
                             "type": "saved",
-                            "message": f"Saved {i + 1}/{len(contacts_to_save)}",
+                            "message": f"Saved {total_processed}/{len(contacts_to_save)}",
                             "total": len(contacts_to_save),
-                            "processed": i + 1,
-                            "current": contact.name,
-                            "saved_contacts": saved_contacts
+                            "processed": total_processed,
+                            "current": batch[-1].name if batch else None,
+                            "saved_contacts": saved_contacts[-10:]  # Only send last 10 to reduce payload
                         }
                         yield f"data: {json.dumps(save_progress)}\n\n"
-                        await asyncio.sleep(0.05)  # Small delay for UI updates
+                        await asyncio.sleep(0.01)  # Minimal delay for UI updates
                     
                     # Final complete message
                     final_progress = {

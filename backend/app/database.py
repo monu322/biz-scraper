@@ -325,7 +325,7 @@ class Database:
             raise
     
     async def get_contacts_by_niche(self, niche_id: int, limit: int = 100, offset: int = 0) -> List[dict]:
-        """Get contacts for a specific niche."""
+        """Get contacts for a specific niche with pagination."""
         try:
             response = self.client.table("contacts") \
                 .select("*") \
@@ -337,6 +337,36 @@ class Database:
             return response.data if response.data else []
         except Exception as e:
             print(f"Error getting contacts by niche: {e}")
+            raise
+    
+    async def get_all_contacts_by_niche(self, niche_id: int) -> List[dict]:
+        """Get ALL contacts for a specific niche (no limit)."""
+        try:
+            # Supabase has a default limit, so we need to paginate to get all
+            all_contacts = []
+            batch_size = 1000
+            offset = 0
+            
+            while True:
+                response = self.client.table("contacts") \
+                    .select("*") \
+                    .eq("niche_id", niche_id) \
+                    .order("created_at", desc=True) \
+                    .range(offset, offset + batch_size - 1) \
+                    .execute()
+                
+                batch = response.data if response.data else []
+                all_contacts.extend(batch)
+                
+                # If we got less than batch_size, we've reached the end
+                if len(batch) < batch_size:
+                    break
+                    
+                offset += batch_size
+            
+            return all_contacts
+        except Exception as e:
+            print(f"Error getting all contacts by niche: {e}")
             raise
     
     async def delete_contacts_by_niche(self, niche_id: int) -> int:

@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
     
     # CORS Configuration - stored as comma-separated string in env
-    allowed_origins: str = "http://localhost:3001,http://localhost:5173,http://localhost:3000"
+    allowed_origins: str = "http://localhost:3001,http://localhost:5173,http://localhost:3000,http://localhost:3002,http://localhost:3003,http://localhost:3004"
     
     @property
     def cors_origins(self) -> List[str]:

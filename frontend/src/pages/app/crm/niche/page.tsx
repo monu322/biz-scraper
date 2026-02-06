@@ -171,6 +171,93 @@ type ViewMode = "table" | "map";
 dayjs.extend(duration);
 dayjs.extend(relativeTime);
 
+// Helper function to detect if a phone number is likely a mobile number
+const isMobileNumber = (phone: string | null): boolean => {
+  if (!phone) return false;
+  
+  // Remove all formatting characters
+  const cleaned = phone.replace(/[\s\-\(\)\.\+]/g, '');
+  
+  // Must have at least 9 digits for a valid mobile number
+  if (cleaned.length < 9) return false;
+  
+  // UK mobile patterns
+  if (phone.match(/^(\+44|0044|44)?[\s\-\.]?7[\s\-\.]?\d{3}[\s\-\.]?\d{6}$/)) return true;
+  
+  // US/Canada mobile patterns (area codes starting with 2-9, excluding certain landline patterns)
+  if (phone.match(/^(\+1|001|1)?[\s\-\.]?[2-9]\d{2}[\s\-\.]?\d{3}[\s\-\.]?\d{4}$/)) {
+    // Exclude obvious landline patterns like toll-free (800, 888, etc.)
+    if (phone.match(/^(\+1|001|1)?[\s\-\.]?[8][0-8][0-8]/)) return false;
+    return true;
+  }
+  
+  // International mobile patterns (starting with + and country code)
+  // Most mobile numbers are 10-15 digits including country code
+  if (phone.startsWith('+') && cleaned.length >= 10 && cleaned.length <= 15) {
+    // Common international mobile patterns
+    // India: +91 followed by 10 digits
+    if (phone.match(/^(\+91|0091|91)[\s\-\.]?[6-9]\d{9}$/)) return true;
+    // Australia: +61 4xx xxx xxx
+    if (phone.match(/^(\+61|0061|61)[\s\-\.]?4[\s\-\.]?\d{8}$/)) return true;
+    // Germany: +49 1xx (mobile prefixes start with 1)
+    if (phone.match(/^(\+49|0049|49)[\s\-\.]?1[\s\-\.]?\d{9,10}$/)) return true;
+    // France: +33 6xx or 7xx
+    if (phone.match(/^(\+33|0033|33)[\s\-\.]?[67][\s\-\.]?\d{8}$/)) return true;
+    // Spain: +34 6xx or 7xx
+    if (phone.match(/^(\+34|0034|34)[\s\-\.]?[67][\s\-\.]?\d{8}$/)) return true;
+    // Netherlands: +31 6xx
+    if (phone.match(/^(\+31|0031|31)[\s\-\.]?6[\s\-\.]?\d{8}$/)) return true;
+    // Belgium: +32 4xx
+    if (phone.match(/^(\+32|0032|32)[\s\-\.]?4[\s\-\.]?\d{8}$/)) return true;
+    
+    // Generic check: if it starts with + and has reasonable length, likely mobile
+    return true;
+  }
+  
+  // If none of the above patterns match, assume landline
+  return false;
+};
+
+// Helper function to format phone number for WhatsApp URL
+const formatPhoneForWhatsApp = (phone: string | null): string => {
+  if (!phone) return '';
+  
+  // Remove all formatting characters except +
+  let cleaned = phone.replace(/[\s\-\(\)\.]/g, '');
+  
+  // If it already starts with +, return as is
+  if (cleaned.startsWith('+')) {
+    return cleaned;
+  }
+  
+  // UK numbers starting with 0
+  if (cleaned.match(/^0?7\d{9}$/)) {
+    return '+44' + cleaned.substring(1);
+  }
+  
+  // UK numbers starting with 44
+  if (cleaned.match(/^447\d{9}$/)) {
+    return '+' + cleaned;
+  }
+  
+  // US/Canada numbers (10 digits)
+  if (cleaned.match(/^[2-9]\d{9}$/)) {
+    return '+1' + cleaned;
+  }
+  
+  // US/Canada with leading 1
+  if (cleaned.match(/^1[2-9]\d{9}$/)) {
+    return '+' + cleaned;
+  }
+  
+  // For other international numbers, add + if not present
+  if (!cleaned.startsWith('+')) {
+    cleaned = '+' + cleaned;
+  }
+  
+  return cleaned;
+};
+
 // Custom CSS for crosshair cursor on map (for click-to-scrape)
 const mapCursorStyle = `
   .leaflet-container.map-scrape-mode {
@@ -257,6 +344,7 @@ export default function NicheDetailPage() {
     enriched_count?: number;
     skipped_count?: number;
   } | null>(null);
+  const [enrichmentEventSource, setEnrichmentEventSource] = useState<EventSource | null>(null);
 
   // Scrape progress state
   const [scrapeProgress, setScrapeProgress] = useState<{
@@ -347,8 +435,8 @@ export default function NicheDetailPage() {
     if (!nicheId) return;
     setLoading(true);
     try {
-      // Fetch all contacts (increase limit to 1000)
-      const response = await fetch(apiUrl(`/api/niches/${nicheId}/contacts?limit=1000`));
+      // Fetch all contacts (no limit)
+      const response = await fetch(apiUrl(`/api/niches/${nicheId}/contacts`));
       if (!response.ok) {
         throw new Error("Failed to fetch contacts");
       }
@@ -481,6 +569,7 @@ export default function NicheDetailPage() {
     try {
       // Use SSE endpoint for real-time progress
       const eventSource = apiEventSource(`/api/niches/${nicheId}/enrich-emails/stream`);
+      setEnrichmentEventSource(eventSource);
       
       eventSource.onmessage = async (event) => {
         const data = JSON.parse(event.data);
@@ -489,6 +578,7 @@ export default function NicheDetailPage() {
         // If complete or error, close the connection
         if (data.type === "complete" || data.type === "error") {
           eventSource.close();
+          setEnrichmentEventSource(null);
           setEnriching(false);
           await fetchContacts();
         }
@@ -496,6 +586,7 @@ export default function NicheDetailPage() {
       
       eventSource.onerror = () => {
         eventSource.close();
+        setEnrichmentEventSource(null);
         setEnriching(false);
         setEnrichmentProgress(prev => prev ? { ...prev, type: "error", message: "Connection lost" } : null);
       };
@@ -505,6 +596,17 @@ export default function NicheDetailPage() {
       setEnriching(false);
       setEnrichmentProgress(prev => prev ? { ...prev, type: "error", message: String(error) } : null);
     }
+  };
+
+  // Stop enrichment handler
+  const handleStopEnrichment = async () => {
+    if (enrichmentEventSource) {
+      enrichmentEventSource.close();
+      setEnrichmentEventSource(null);
+    }
+    setEnriching(false);
+    setEnrichmentProgress(prev => prev ? { ...prev, type: "stopped", message: "Stopped by user" } : null);
+    await fetchContacts();
   };
 
   const handleResetNAEmails = async () => {
@@ -643,7 +745,7 @@ export default function NicheDetailPage() {
     return "your area";
   };
 
-  // Generate prefilled WhatsApp message
+  // Generate prefilled WhatsApp message (for Twilio with booking link)
   const generateWhatsAppMessage = (row: Row): string => {
     const area = getAreaFromAddress(row.address);
     return `Hi,
@@ -653,6 +755,21 @@ This is John from NeuroSphere, a London based digital media agency. I was lookin
 Would you be interested in a FREE website for your business? If yes book a call with us today and we will develop an amazing free website for you.
 
 Book here: https://calendly.com/john-neurosphere/30min`;
+  };
+
+  // Generate WhatsApp message for direct WhatsApp Web link (without booking link)
+  const generateSimpleWhatsAppMessage = (row: Row): string => {
+    const area = getAreaFromAddress(row.address);
+    const businessName = row.name;
+    return `Hi,
+
+This is John from NeuroSphere, a London based Website development agency. I was looking into businesses in ${area} that had amazing reviews but no website. We build professional websites for businesses like yours that will make your customers say wow!
+
+Would you be interested in a FREE website for ${businessName}? You pay only if you are impressed.
+
+Thanks,
+John, Head of Development
+www.neurosphere.tech`;
   };
 
   // Open no website dialog
@@ -704,7 +821,45 @@ Book here: https://calendly.com/john-neurosphere/30min`;
     },
     { field: "email", headerName: "Email", type: "string", width: 220 },
     { field: "company", headerName: "Company", width: 180, type: "string" },
-    { field: "phone", headerName: "Phone", width: 160, type: "string" },
+    { 
+      field: "phone", 
+      headerName: "Phone", 
+      width: 200, 
+      type: "string",
+      renderCell: (params: GridRenderCellParams<any, string>) => {
+        if (!params.value) return null;
+        
+        // Check if this is a mobile number
+        if (isMobileNumber(params.value)) {
+          const whatsappNumber = formatPhoneForWhatsApp(params.value);
+          const message = generateSimpleWhatsAppMessage(params.row);
+          const encodedMessage = encodeURIComponent(message);
+          const whatsappUrl = `https://wa.me/${whatsappNumber.replace('+', '')}?text=${encodedMessage}`;
+          
+          return (
+            <a 
+              href={whatsappUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Button 
+                size="tiny" 
+                color="success" 
+                variant="contained"
+                startIcon={<span>💬</span>}
+                className="pointer-events-none"
+              >
+                {params.value}
+              </Button>
+            </a>
+          );
+        }
+        
+        // For landline or non-mobile numbers, just display as text
+        return <Typography variant="body2">{params.value}</Typography>;
+      },
+    },
     { field: "address", headerName: "Address", width: 250, type: "string" },
     {
       field: "website",
@@ -976,11 +1131,11 @@ Book here: https://calendly.com/john-neurosphere/30min`;
   }, [filteredRows]);
 
   return (
-    <>
+    <Box className="w-full overflow-x-hidden">
       {/* Header Section - Always Visible */}
-      <Grid container spacing={5} className="mb-4">
-        <Grid container spacing={2.5} className="w-full" size={12}>
-          <Grid size={{ xs: 12, md: "grow" }}>
+      <Box className="mb-5 max-w-full">
+        <Box className="mb-4 flex flex-col md:flex-row md:items-start md:justify-between gap-4 max-w-full">
+          <Box>
             <Typography variant="h1" component="h1" className="mb-0">
               {niche?.name || "Loading..."}
             </Typography>
@@ -989,9 +1144,9 @@ Book here: https://calendly.com/john-neurosphere/30min`;
               <Link color="inherit" to="/crm">CRM</Link>
               <Typography variant="body2">{niche?.name}</Typography>
             </Breadcrumbs>
-          </Grid>
+          </Box>
 
-          <Grid size={{ xs: 12, md: "auto" }} className="flex flex-row items-start gap-2">
+          <Box className="flex flex-row items-start gap-2 flex-wrap">
             {/* View Toggle */}
             <Box className="border-grey-200 inline-flex rounded-2xl border border-solid p-1.75 mr-2">
               <ToggleButtonGroup value={viewMode} exclusive onChange={handleViewModeChange} size="small">
@@ -1033,12 +1188,11 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                 <NiBinEmpty size={"medium"} />
               </Button>
             </Tooltip>
-          </Grid>
-        </Grid>
+          </Box>
+        </Box>
 
         {/* Search Bar */}
-        <Grid size={12}>
-          <FormControl variant="filled" size="medium" className="surface mb-0 w-full">
+        <FormControl variant="filled" size="medium" className="surface mb-0 w-full">
             <InputLabel>Search</InputLabel>
             <FilledInput 
               value={searchQuery}
@@ -1055,8 +1209,7 @@ Book here: https://calendly.com/john-neurosphere/30min`;
               }
             />
           </FormControl>
-        </Grid>
-      </Grid>
+      </Box>
 
       {/* No Website Action Dialog - Enhanced with full business details */}
       <Dialog open={noWebsiteDialogOpen} onClose={() => { setNoWebsiteDialogOpen(false); setSelectedContactForAction(null); setSmsMessage(""); }} maxWidth="md" fullWidth>
@@ -1078,8 +1231,34 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                   <Typography variant="body2" className="mb-2">
                     Send a WhatsApp message to: <strong>{selectedContactForAction.phone}</strong>
                   </Typography>
+                  
+                  {/* Direct WhatsApp Web Link - Quick Option */}
+                  {isMobileNumber(selectedContactForAction.phone) && (
+                    <Box className="mb-3">
+                      <Button 
+                        variant="contained" 
+                        color="success" 
+                        fullWidth
+                        component="a"
+                        href={`https://wa.me/${formatPhoneForWhatsApp(selectedContactForAction.phone).replace('+', '')}?text=${encodeURIComponent(generateSimpleWhatsAppMessage(selectedContactForAction))}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        startIcon={<span>💬</span>}
+                      >
+                        Send WhatsApp Message
+                      </Button>
+                      <Typography variant="caption" className="text-text-secondary mt-1 block text-center">
+                        Opens WhatsApp Web with personalized message
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* Or send via Twilio (with custom message) */}
+                  <Typography variant="caption" className="text-text-secondary mb-2 block">
+                    Or customize your message and send via Twilio:
+                  </Typography>
                   <TextField
-                    label="WhatsApp Message"
+                    label="Custom WhatsApp Message"
                     variant="outlined"
                     fullWidth
                     multiline
@@ -1092,14 +1271,14 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                     className="mb-2"
                   />
                   <Button 
-                    variant="contained" 
+                    variant="outlined" 
                     color="success" 
                     fullWidth
                     disabled={sendingSms || !smsMessage.trim()}
                     onClick={handleSendWhatsApp}
                     startIcon={<span>📲</span>}
                   >
-                    {sendingSms ? "Sending WhatsApp..." : "Send via WhatsApp"}
+                    {sendingSms ? "Sending via Twilio..." : "Send via Twilio"}
                   </Button>
                 </>
               ) : (
@@ -1372,6 +1551,15 @@ Book here: https://calendly.com/john-neurosphere/30min`;
           </Box>
         </DialogContent>
         <DialogActions>
+          {enriching && (
+            <Button 
+              onClick={handleStopEnrichment} 
+              color="error" 
+              variant="contained"
+            >
+              Stop
+            </Button>
+          )}
           <Button 
             onClick={() => setEnrichmentDialogOpen(false)} 
             color="grey" 
@@ -1397,21 +1585,21 @@ Book here: https://calendly.com/john-neurosphere/30min`;
               <>
                 <TextField label="Keyword" variant="outlined" fullWidth value={scrapeKeyword} onChange={(e) => setScrapeKeyword(e.target.value)} placeholder="e.g., hvac, restaurants, plumbers" disabled={scraping} />
                 <TextField label="Location" variant="outlined" fullWidth value={scrapeLocation} onChange={(e) => setScrapeLocation(e.target.value)} placeholder="e.g., London, New York" disabled={scraping} />
-                <TextField label="Number of Records" variant="outlined" fullWidth type="number" value={scrapeLimit} onChange={(e) => setScrapeLimit(e.target.value)} inputProps={{ min: 1, max: 500 }} helperText="1-500 records" disabled={scraping} />
+                <TextField label="Number of Records" variant="outlined" fullWidth type="number" value={scrapeLimit} onChange={(e) => setScrapeLimit(e.target.value)} inputProps={{ min: 1, max: 5000 }} helperText="1-5000 records" disabled={scraping} />
               </>
             )}
 
                 {/* Scraping Progress */}
             {scraping && scrapeProgress && (
               <>
-                {/* Progress Bar */}
+                {/* Single Progress Bar - shows throughout all phases */}
                 <Box>
                   <Box className="mb-2 flex items-center justify-between">
                     <Typography variant="body2" className="text-text-secondary">
                       {scrapeProgress.type === "complete" ? "✅ Complete!" : 
                        scrapeProgress.type === "error" ? "❌ Error" : 
                        scrapeProgress.type === "scraping" ? "🔍 Scraping Google Maps..." : 
-                       scrapeProgress.type === "saving" ? "💾 Saving contacts..." : 
+                       scrapeProgress.type === "saving" || scrapeProgress.type === "saved" ? "💾 Saving to database..." : 
                        scrapeProgress.type === "processing" ? "📥 Processing..." : "🚀 Starting..."}
                     </Typography>
                     <Typography variant="body2" className="font-medium">
@@ -1419,14 +1607,14 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                     </Typography>
                   </Box>
                   <LinearProgress 
-                    variant={scrapeProgress.type === "start" ? "indeterminate" : "determinate"}
+                    variant={scrapeProgress.type === "start" || scrapeProgress.type === "scraping" ? "indeterminate" : "determinate"}
                     value={scrapeProgress.total > 0 ? (scrapeProgress.processed / scrapeProgress.total) * 100 : 0}
                     color={scrapeProgress.type === "complete" ? "success" : scrapeProgress.type === "error" ? "error" : "primary"}
                   />
                 </Box>
 
-                {/* Current status message */}
-                {scrapeProgress.type !== "complete" && scrapeProgress.type !== "error" && (
+                {/* Current status message - only during scraping phase, not saving */}
+                {scrapeProgress.type !== "complete" && scrapeProgress.type !== "error" && scrapeProgress.type !== "saving" && scrapeProgress.type !== "saved" && (
                   <Box className="rounded-lg bg-blue-50 border border-blue-200 p-3">
                     <Typography variant="body2" className="text-blue-700">
                       {scrapeProgress.message}
@@ -1439,21 +1627,12 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                   </Box>
                 )}
 
-                {/* Saved contacts list - show as they come in */}
-                {scrapeProgress.saved_contacts && scrapeProgress.saved_contacts.length > 0 && (
-                  <Box className="rounded-lg bg-grey-50 border border-grey-200 p-3 max-h-60 overflow-y-auto">
-                    <Typography variant="caption" className="text-text-secondary mb-2 block">Contacts saved:</Typography>
-                    <Box className="flex flex-col gap-1">
-                      {scrapeProgress.saved_contacts.map((contact, idx) => (
-                        <Box key={idx} className="flex items-center gap-2">
-                          <span className="text-green-500 text-lg">✓</span>
-                          <Typography variant="body2" className="font-medium">{contact.name}</Typography>
-                          {contact.is_new && (
-                            <Button size="tiny" color="success" variant="pastel" className="pointer-events-none ml-auto">NEW</Button>
-                          )}
-                        </Box>
-                      ))}
-                    </Box>
+                {/* Saving status - simplified */}
+                {(scrapeProgress.type === "saving" || scrapeProgress.type === "saved") && scrapeProgress.current && (
+                  <Box className="rounded-lg bg-green-50 border border-green-200 p-3">
+                    <Typography variant="body2" className="text-green-700">
+                      Saving: {scrapeProgress.current}
+                    </Typography>
                   </Box>
                 )}
 
@@ -1646,10 +1825,10 @@ Book here: https://calendly.com/john-neurosphere/30min`;
         </DialogActions>
       </Dialog>
 
-      <Grid container spacing={5}>
+      <Box className="w-full max-w-full overflow-x-hidden">
         {rows.length > 0 && (
-          <Grid size={12}>
-            <Box className="mb-4 rounded-lg bg-surface-container p-4">
+          <Box className="mb-5 max-w-full">
+            <Box className="mb-4 rounded-lg bg-surface-container p-4 max-w-full">
               <Box className="mb-2 flex items-center justify-between">
                 <Typography variant="body2" className="text-text-secondary">Email Enrichment Status</Typography>
                 <Typography variant="body2" className="font-medium">
@@ -1738,11 +1917,11 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                 );
               })()}
             </Box>
-          </Grid>
+          </Box>
         )}
         {/* Shared Toolbar - above both views */}
-        <Grid size={12}>
-          <Box className="flex items-center gap-2 mb-4">
+        <Box className="mb-5 max-w-full">
+          <Box className="flex items-center gap-2 mb-4 max-w-full overflow-x-auto">
             <Tooltip title="Filter: No Website">
               <Button 
                 className="surface-standard flex-none" 
@@ -1795,8 +1974,27 @@ Book here: https://calendly.com/john-neurosphere/30min`;
                       return `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
                     }
                   };
+                  // Helper for DEEP cleaning: removes all problematic characters for Instantly
+                  const deepClean = (val: string | null | undefined): string => {
+                    return (val || '')
+                      .replace(/[\uFEFF\u200B\u200C\u200D\u2060\u00A0]/g, '') // Remove BOM, zero-width chars, non-breaking spaces
+                      .replace(/[\r\n\t]/g, ' ')  // Replace newlines/tabs with space
+                      .replace(/\s+/g, ' ')        // Collapse multiple spaces to single space
+                      .trim()                       // Remove leading/trailing whitespace
+                      .replace(/"/g, '""');        // Escape quotes for CSV
+                  };
+                  // Special cleaner for emails - removes ALL spaces
+                  const cleanEmail = (val: string | null | undefined, defaultVal: string): string => {
+                    const cleaned = deepClean(val).replace(/\s/g, ''); // Remove ALL spaces from email
+                    return cleaned || defaultVal;
+                  };
+                  // General cleaner with defaults
+                  const cleanValue = (val: string | null | undefined, defaultVal: string = ''): string => {
+                    const cleaned = deepClean(val);
+                    return cleaned || defaultVal;
+                  };
                   const csv = filteredRows.map((r, i) => 
-                    `${i+1},"${(r.name||'').replace(/"/g,'""')}","${(r.email||'').replace(/"/g,'""')}","${(r.phone||'').replace(/"/g,'""')}","${(r.address||'').replace(/"/g,'""')}","${(r.website||'').replace(/"/g,'""')}",${r.rating || ''},${r.reviewsCount || ''},"${getGoogleMapsUrl(r)}"`
+                    `${i+1},"${cleanValue(r.name, 'Unknown Business')}","${cleanEmail(r.email, 'noemail@placeholder.com')}","${cleanValue(r.phone, '+00 0000000000')}","${cleanValue(r.address, 'No Address')}","${cleanValue(r.website, 'https://nowebsite.com')}",${r.rating || 0},${r.reviewsCount || 0},"${deepClean(getGoogleMapsUrl(r))}"`
                   ).join('\n');
                   const blob = new Blob([`Index,Name,Email,Phone,Address,Website,Rating,Reviews,GoogleMapsLink\n${csv}`], { type: 'text/csv' });
                   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${niche?.name || 'contacts'}_filtered_${filteredRows.length}.csv`; a.click();
@@ -1811,10 +2009,10 @@ Book here: https://calendly.com/john-neurosphere/30min`;
               {customFilters.length > 0 && ` (${customFilters.length} filter${customFilters.length > 1 ? 's' : ''} active)`}
             </Typography>
           </Box>
-        </Grid>
+        </Box>
 
         {viewMode === "map" ? (
-          <Grid size={12}>
+          <Box className="w-full">
             {/* Inject CSS for magnifying glass cursor */}
             <style>{mapCursorStyle}</style>
             <Box className="rounded-lg overflow-hidden" style={{ height: "600px" }}>
@@ -1873,13 +2071,15 @@ Book here: https://calendly.com/john-neurosphere/30min`;
             <Typography variant="caption" className="text-text-secondary mt-2 block text-center">
               💡 Click anywhere on the map to scrape businesses in that area
             </Typography>
-          </Grid>
+          </Box>
         ) : (
-          <Grid size={12} className="overflow-hidden">
-            <DataGrid
-              apiRef={apiRef}
-              rows={filteredRows}
-              columns={columns}
+          <Box className="w-full">
+            <Box className="w-full overflow-x-auto">
+              <Box sx={{ minWidth: 1200 }}>
+                <DataGrid
+                apiRef={apiRef}
+                rows={filteredRows}
+                columns={columns}
               initialState={{ columns: { columnVisibilityModel: { avatar: false } }, pagination: { paginationModel: { pageSize: 10 } } }}
               getRowSpacing={getRowSpacing}
               rowHeight={68}
@@ -1921,9 +2121,11 @@ Book here: https://calendly.com/john-neurosphere/30min`;
               onFilterModelChange={(model) => setFilterModel(model)}
               hideFooterSelectedRowCount
             />
-          </Grid>
+              </Box>
+            </Box>
+          </Box>
         )}
-      </Grid>
-    </>
+      </Box>
+    </Box>
   );
 }

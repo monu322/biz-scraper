@@ -3,8 +3,29 @@ from app.config import get_settings
 from app.database import db
 import re
 import httpx
+import asyncio
+import signal
 from typing import Optional
 from bs4 import BeautifulSoup
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+
+
+# Thread pool for running regex operations with timeout
+_executor = ThreadPoolExecutor(max_workers=4)
+
+# Timeout for regex operations (seconds)
+REGEX_TIMEOUT = 5
+
+# Timeout for processing a single contact (seconds)
+CONTACT_TIMEOUT = 30
+
+
+def _run_regex_findall(pattern: str, text: str, flags: int = 0) -> list:
+    """Run regex findall in a way that can be interrupted."""
+    try:
+        return re.findall(pattern, text, flags)
+    except Exception:
+        return []
 
 
 class EnrichmentService:
@@ -13,6 +34,26 @@ class EnrichmentService:
     def __init__(self):
         settings = get_settings()
         self.client = OpenAI(api_key=settings.openai_api_key)
+    
+    async def safe_regex_findall(self, pattern: str, text: str, flags: int = 0) -> list:
+        """
+        Run regex findall with timeout protection.
+        Returns empty list if timeout or error.
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            # Run regex in thread pool with timeout
+            result = await asyncio.wait_for(
+                loop.run_in_executor(_executor, _run_regex_findall, pattern, text, flags),
+                timeout=REGEX_TIMEOUT
+            )
+            return result or []
+        except asyncio.TimeoutError:
+            print(f"  → Regex timeout (pattern took >{REGEX_TIMEOUT}s), skipping")
+            return []
+        except Exception as e:
+            print(f"  → Regex error: {e}")
+            return []
     
     def find_contact_page_urls(self, soup: BeautifulSoup, base_url: str) -> list[str]:
         """
@@ -185,9 +226,9 @@ class EnrichmentService:
             print(f"  → Error decoding Cloudflare email: {e}")
             return ""
     
-    def extract_emails_from_html(self, soup: BeautifulSoup, page_url: str = "", domain: str = "") -> list[str]:
+    async def extract_emails_from_html(self, soup: BeautifulSoup, page_url: str = "", domain: str = "") -> list[str]:
         """
-        Extract emails directly from HTML using multiple methods:
+        Extract emails directly from HTML using multiple methods with timeout protection.
         1. Decode Cloudflare protected emails
         2. From mailto: links (BeautifulSoup)
         3. mailto: regex on raw HTML (backup)
@@ -198,7 +239,11 @@ class EnrichmentService:
         
         try:
             # Get raw HTML as string (preserve original case for email extraction)
+            # Limit HTML size to prevent regex catastrophic backtracking
             raw_html = str(soup)
+            if len(raw_html) > 500000:  # 500KB limit
+                print(f"  → HTML too large ({len(raw_html)} chars), truncating")
+                raw_html = raw_html[:500000]
             
             # 1. CLOUDFLARE EMAIL PROTECTION - Decode data-cfemail attributes
             for cf_element in soup.find_all(attrs={"data-cfemail": True}):
@@ -210,9 +255,9 @@ class EnrichmentService:
                             emails.append(decoded_email)
                             print(f"  → Found Cloudflare protected email: {decoded_email}")
             
-            # Also check for data-cfemail in raw HTML with regex (backup method)
+            # Also check for data-cfemail in raw HTML with regex (backup method) - with timeout
             cf_pattern = r'data-cfemail="([a-f0-9]+)"'
-            cf_matches = re.findall(cf_pattern, raw_html, re.IGNORECASE)
+            cf_matches = await self.safe_regex_findall(cf_pattern, raw_html, re.IGNORECASE)
             for encoded in cf_matches:
                 decoded_email = self.decode_cloudflare_email(encoded)
                 if decoded_email and '@' in decoded_email:
@@ -220,36 +265,40 @@ class EnrichmentService:
                         emails.append(decoded_email)
                         print(f"  → Found Cloudflare protected email (regex): {decoded_email}")
             
-            # 2. Extract from mailto: links using BeautifulSoup
+            # 2. Extract from mailto: links using BeautifulSoup (no timeout needed, fast)
             for link in soup.find_all('a', href=True):
                 href = link.get('href', '')
                 href_lower = href.lower()
                 if 'mailto:' in href_lower:
-                    # Extract email from mailto:email@example.com or mailto:email@example.com?subject=...
                     mailto_idx = href_lower.find('mailto:')
-                    email_part = href[mailto_idx + 7:]  # Keep original case
-                    # Remove query params and fragment
+                    email_part = href[mailto_idx + 7:]
                     email = email_part.split('?')[0].split('#')[0].strip()
-                    # Clean up any whitespace or special chars
                     email = email.strip().replace('%20', '').replace(' ', '')
                     if email and '@' in email and '.' in email.split('@')[-1]:
                         email_lower = email.lower()
-                        if email_lower not in emails:
-                            emails.append(email_lower)
-                            print(f"  → Found mailto email (BeautifulSoup): {email_lower}")
+                        # Filter out obvious false positives
+                        if not any(fp in email_lower for fp in ['example.com', 'email.com', 'wixpress.com', 'sentry.io', '.png', '.jpg']):
+                            if email_lower not in emails:
+                                emails.append(email_lower)
+                                print(f"  → Found mailto email (BeautifulSoup): {email_lower}")
             
-            # 3. BACKUP: Search for mailto: in raw HTML with regex (catches malformed HTML)
+            # EARLY RETURN: If we found valid mailto emails, return immediately (skip slow regex)
+            if emails:
+                print(f"  → Returning early with mailto emails: {emails}")
+                return emails
+            
+            # 3. BACKUP: Search for mailto: in raw HTML with regex (with timeout) - only if no mailto found
             mailto_pattern = r'mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'
-            mailto_matches = re.findall(mailto_pattern, raw_html, re.IGNORECASE)
+            mailto_matches = await self.safe_regex_findall(mailto_pattern, raw_html, re.IGNORECASE)
             for email in mailto_matches:
                 email_lower = email.lower()
                 if email_lower not in emails:
                     emails.append(email_lower)
                     print(f"  → Found mailto email (regex): {email_lower}")
             
-            # 4. Also check href attributes directly with regex (catches href="mailto:...")
+            # 4. Also check href attributes directly with regex (with timeout)
             href_mailto_pattern = r'href=["\']mailto:([^"\'?#]+)'
-            href_mailto_matches = re.findall(href_mailto_pattern, raw_html, re.IGNORECASE)
+            href_mailto_matches = await self.safe_regex_findall(href_mailto_pattern, raw_html, re.IGNORECASE)
             for email in href_mailto_matches:
                 email = email.strip().replace('%20', '').replace(' ', '')
                 if '@' in email and '.' in email.split('@')[-1]:
@@ -258,28 +307,28 @@ class EnrichmentService:
                         emails.append(email_lower)
                         print(f"  → Found mailto email (href regex): {email_lower}")
             
-            # 5. Search for @domain pattern specifically (most reliable for business emails)
+            # 5. Search for @domain pattern specifically (with timeout)
             if domain:
                 domain_pattern = rf'[a-zA-Z0-9._%+-]+@{re.escape(domain)}'
-                found_domain_emails = re.findall(domain_pattern, raw_html, re.IGNORECASE)
+                found_domain_emails = await self.safe_regex_findall(domain_pattern, raw_html, re.IGNORECASE)
                 for email in found_domain_emails:
                     email_lower = email.lower()
                     if email_lower not in emails:
                         emails.append(email_lower)
                         print(f"  → Found @{domain} email: {email_lower}")
             
-            # 6. General email pattern search in raw HTML
+            # 6. General email pattern search in raw HTML (with timeout)
             email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
-            found_in_html = re.findall(email_pattern, raw_html, re.IGNORECASE)
+            found_in_html = await self.safe_regex_findall(email_pattern, raw_html, re.IGNORECASE)
             for email in found_in_html:
                 email_lower = email.lower()
                 if email_lower not in emails:
                     emails.append(email_lower)
                     print(f"  → Found general email: {email_lower}")
             
-            # 7. Search in visible text content too (sometimes emails are in text not HTML attrs)
-            text_content = soup.get_text(separator=' ', strip=True)
-            text_emails = re.findall(email_pattern, text_content, re.IGNORECASE)
+            # 7. Search in visible text content too (limit text size)
+            text_content = soup.get_text(separator=' ', strip=True)[:100000]  # Limit to 100KB
+            text_emails = await self.safe_regex_findall(email_pattern, text_content, re.IGNORECASE)
             for email in text_emails:
                 email_lower = email.lower()
                 if email_lower not in emails:
@@ -292,7 +341,7 @@ class EnrichmentService:
                 'wixpress.com', 'sentry.io', 'sentry-next.wixpress.com',
                 '.png', '.jpg', '.gif', '.svg', '.webp', '.ico',
                 'wordpress.com', 'squarespace.com', 'shopify.com',
-                '@2x', '@3x',  # Image resolution markers
+                '@2x', '@3x',
                 'noreply', 'no-reply', 'donotreply',
             ]
             
@@ -300,7 +349,6 @@ class EnrichmentService:
             for email in emails:
                 email_lower = email.lower()
                 if not any(fp in email_lower for fp in false_positive_patterns):
-                    # Additional validation: must have valid TLD
                     parts = email_lower.split('@')
                     if len(parts) == 2 and '.' in parts[1]:
                         tld = parts[1].split('.')[-1]
@@ -357,7 +405,7 @@ class EnrichmentService:
                     soup = BeautifulSoup(response.text, 'html.parser')
                     
                     # Extract emails directly from HTML
-                    homepage_emails = self.extract_emails_from_html(soup, website, domain)
+                    homepage_emails = await self.extract_emails_from_html(soup, website, domain)
                     
                     for email in homepage_emails:
                         if email not in all_emails:
@@ -382,7 +430,7 @@ class EnrichmentService:
                             contact_soup = BeautifulSoup(contact_response.text, 'html.parser')
                             
                             # Extract emails from this page
-                            page_emails = self.extract_emails_from_html(contact_soup, url, domain)
+                            page_emails = await self.extract_emails_from_html(contact_soup, url, domain)
                             for email in page_emails:
                                 if email not in all_emails:
                                     all_emails.append(email)
@@ -415,7 +463,7 @@ class EnrichmentService:
                                 nav_soup = BeautifulSoup(nav_response.text, 'html.parser')
                                 
                                 # Extract emails from this page
-                                page_emails = self.extract_emails_from_html(nav_soup, url, domain)
+                                page_emails = await self.extract_emails_from_html(nav_soup, url, domain)
                                 for email in page_emails:
                                     if email not in all_emails:
                                         all_emails.append(email)
@@ -542,9 +590,9 @@ class EnrichmentService:
             failed_count = 0
             
             for contact in contacts:
-                # Skip if already has a real email (not status messages)
+                # Skip if email field has ANY value (already processed)
                 email = contact.get("email")
-                if email and email not in ["N/A", "no email found", "No website", "website error"]:
+                if email:
                     skipped_count += 1
                     continue
                 
@@ -587,8 +635,8 @@ class EnrichmentService:
         Yields progress updates as JSON strings for SSE.
         """
         try:
-            # Get contacts for this niche
-            contacts = await db.get_contacts_by_niche(niche_id, limit=1000)
+            # Get ALL contacts for this niche (no limit)
+            contacts = await db.get_all_contacts_by_niche(niche_id)
             total = len(contacts)
             
             enriched_count = 0
@@ -608,9 +656,9 @@ class EnrichmentService:
             for contact in contacts:
                 processed += 1
                 
-                # Skip if already has a real email (not status messages)
+                # Skip if email field has ANY value (already processed)
                 email = contact.get("email")
-                if email and email not in ["N/A", "no email found", "No website", "website error"]:
+                if email:
                     skipped_count += 1
                     yield {
                         "type": "progress",
@@ -618,7 +666,7 @@ class EnrichmentService:
                         "processed": processed,
                         "current": contact["name"],
                         "result": "skipped",
-                        "message": f"Skipped (already has email)"
+                        "message": f"Skipped (already processed)"
                     }
                     continue
                 
@@ -646,13 +694,35 @@ class EnrichmentService:
                     "message": f"Checking {contact['website']}..."
                 }
                 
-                # Try to find email
-                found_email = await self.extract_email_from_website(
-                    contact["website"],
-                    contact["name"]
-                )
+                # Try to find email with timeout protection
+                try:
+                    found_email = await asyncio.wait_for(
+                        self.extract_email_from_website(
+                            contact["website"],
+                            contact["name"]
+                        ),
+                        timeout=CONTACT_TIMEOUT
+                    )
+                except asyncio.TimeoutError:
+                    print(f"  → TIMEOUT: Contact {contact['name']} took >{CONTACT_TIMEOUT}s, skipping")
+                    found_email = "timeout"
+                except asyncio.CancelledError:
+                    print(f"  → CANCELLED: Enrichment was stopped by user")
+                    raise  # Re-raise to stop the generator
                 
-                if found_email:
+                if found_email == "timeout":
+                    # Mark as timeout so we don't retry forever
+                    await db.update_contact_email(contact["id"], "timeout")
+                    failed_count += 1
+                    yield {
+                        "type": "progress",
+                        "total": total,
+                        "processed": processed,
+                        "current": contact["name"],
+                        "result": "timeout",
+                        "message": f"Timeout (>{CONTACT_TIMEOUT}s) - skipped"
+                    }
+                elif found_email:
                     await db.update_contact_email(contact["id"], found_email)
                     enriched_count += 1
                     yield {
