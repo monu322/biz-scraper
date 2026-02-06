@@ -502,48 +502,12 @@ async def scrape_niche_contacts_stream(niche_id: int, keyword: str, location: st
                     for contact in contacts_to_save:
                         contact.niche_id = niche_id
                     
-                    # Yield saving status
-                    yield f"data: {json.dumps({'type': 'saving', 'message': 'Saving contacts to database...', 'total': len(contacts_to_save), 'processed': 0, 'current': None})}\n\n"
+                    # Save ALL contacts in a single batch (instant save)
+                    result = await db.upsert_contacts_batch(contacts_to_save)
+                    new_count = result.get("new_count", 0)
+                    updated_count = result.get("updated_count", 0)
                     
-                    # Save contacts in batches for better performance
-                    BATCH_SIZE = 50
-                    new_count = 0
-                    updated_count = 0
-                    saved_contacts = []
-                    total_processed = 0
-                    
-                    for batch_start in range(0, len(contacts_to_save), BATCH_SIZE):
-                        batch_end = min(batch_start + BATCH_SIZE, len(contacts_to_save))
-                        batch = contacts_to_save[batch_start:batch_end]
-                        
-                        # Upsert batch of contacts
-                        result = await db.upsert_contacts_batch(batch)
-                        new_count += result.get("new_count", 0)
-                        updated_count += result.get("updated_count", 0)
-                        total_processed += len(batch)
-                        
-                        # Add batch to saved_contacts summary (just names for UI)
-                        for contact in batch:
-                            saved_contacts.append({
-                                "name": contact.name,
-                                "email": contact.email,
-                                "phone": contact.phone,
-                                "is_new": True  # Approximate, batch doesn't give per-contact info
-                            })
-                        
-                        # Yield progress for batch
-                        save_progress = {
-                            "type": "saved",
-                            "message": f"Saved {total_processed}/{len(contacts_to_save)}",
-                            "total": len(contacts_to_save),
-                            "processed": total_processed,
-                            "current": batch[-1].name if batch else None,
-                            "saved_contacts": saved_contacts[-10:]  # Only send last 10 to reduce payload
-                        }
-                        yield f"data: {json.dumps(save_progress)}\n\n"
-                        await asyncio.sleep(0.01)  # Minimal delay for UI updates
-                    
-                    # Final complete message
+                    # Final complete message (no separate saving progress)
                     final_progress = {
                         "type": "complete",
                         "message": f"Scraped and saved {len(contacts_to_save)} contacts ({new_count} new, {updated_count} updated)",
@@ -552,7 +516,6 @@ async def scrape_niche_contacts_stream(niche_id: int, keyword: str, location: st
                         "current": None,
                         "new_count": new_count,
                         "updated_count": updated_count,
-                        "saved_contacts": saved_contacts,
                         "run_id": run_id
                     }
                     yield f"data: {json.dumps(final_progress)}\n\n"
